@@ -1,4 +1,5 @@
 import taichi as ti
+
 from components_properties import *
 
 # Ropes

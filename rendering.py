@@ -1,14 +1,13 @@
 import taichi as ti
-ti.init(arch=ti.vulkan) 
 
 from components_properties import *
-from components_init import *
 
 # Nets rendering
 net_num_triangles = int((net_nodes_width - 1) * (net_nodes_height - 1) * 2)
 net_indices = ti.field(int, shape=net_num_triangles * 3)
-net_vertices = ti.Vector.field(3, dtype=ti.f32, shape=net_nodes_width * net_nodes_height)
-net_vertices.fill(1)
+net_vertices_1 = ti.Vector.field(3, dtype=ti.f32, shape=net_nodes_width * net_nodes_height)
+net_vertices_2 = ti.Vector.field(3, dtype=ti.f32, shape=net_nodes_width * net_nodes_height)
+net_vertices_3 = ti.Vector.field(3, dtype=ti.f32, shape=net_nodes_width * net_nodes_height)
 net_colors = ti.Vector.field(3, dtype=float, shape=net_nodes_width * net_nodes_height)
 
 @ti.kernel
@@ -29,8 +28,3 @@ def init_mesh_indices(): # since Taichi only supports the rendering of triangles
             net_colors[i * net_nodes_height + j] = (0.8, 0.8, 0.8)
         else:
             net_colors[i * net_nodes_height + j] = (0.5, 0.5, 0.5)
-
-# @ti.kernel
-# def update_vertices(nid: ti.i32):
-#     for i, j in ti.ndrange(net_nodes_width, net_nodes_height):
-#         net_vertices[nid, i * net_nodes_height + j] = x_net[nid, i, j]
