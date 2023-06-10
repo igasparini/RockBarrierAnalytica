@@ -54,34 +54,6 @@ else:
 x_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
 v_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
 
-height_values = ti.field(dtype=ti.i32, shape=2)
-height_values[0] = 0
-height_values[1] = net_nodes_height - 1
-
-# @ti.func
-# def init_shackles(sid: ti.template(), start_pos: ti.template(), direction: ti.template()):
-#     direction_norm = direction.normalized()
-#     # Assume direction has non-zero x and z components for simplicity
-#     # y-axis direction is cross product of direction and [0, 1, 0]
-#     y_dir = ti.Vector([0, 1, 0]).cross(direction_norm).normalized()
-#     x_dir = y_dir.cross(direction_norm).normalized()  # x-axis direction
-    
-#     for i in range(0, num_shackles):
-#         # Compute the shackle position at the bottom and top of the net
-#         for j in range(2):  # use range(2) instead of the list
-#             pos = start_pos + i * shackle_interval * net_quad_size_width * x_dir + height_values[j] * net_quad_size_height * direction_norm
-#             x_shackle[sid, i, j] = pos
-#             v_shackle[sid, i, j] = [0, 0, 0]
-
-# @ti.func
-# def init_shackles():
-#     for n, i, j in x_shackle:
-#         x = n * net_width + i * net_quad_size_width * shackle_interval
-#         y = j * net_height * ti.sin(epsilon)
-#         z = j * net_height * ti.cos(epsilon)
-#         x_shackle[n, i, j] = [x, y, z]
-#         v_shackle[n, i, j] = [0, 0, 0]
-
 @ti.func
 def init_shackles():
     for I in ti.grouped(x_shackle):

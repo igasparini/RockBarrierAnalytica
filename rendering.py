@@ -38,7 +38,7 @@ def net_vertices():
         net_vertices_3[i * net_nodes_height + j] = x_net[2, i, j]
 
 
-# Scackle rendering
+# Shackles rendering
 shakle_vertices_1 = ti.Vector.field(3, dtype=ti.f32, shape=num_shackles * 2)
 shakle_vertices_2 = ti.Vector.field(3, dtype=ti.f32, shape=num_shackles * 2)
 shakle_vertices_3 = ti.Vector.field(3, dtype=ti.f32, shape=num_shackles * 2)
