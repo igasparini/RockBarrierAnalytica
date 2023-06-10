@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import taichi as ti
 ti.init(arch=ti.vulkan)  # Alternatively, ti.init(arch=ti.cpu)
 
@@ -21,28 +22,21 @@ def init_points():
     # Upper bearing rope
     init_rope(1, 20, ti.Vector([-7.5, 0.0, net_height]), ti.Vector([1, 0, 0]))
 
-    # Nets
-    net_position = ti.Vector([0.0, 0.0, 0.0])
-    net_inclination = ti.Vector([1.0, 0.0, 0.0])
-    # Left net
-    init_net(0, ti.Vector([0.0, 0.0, 0.0]), ti.Vector([1.0, 0.0, 0.0]))
-    # Center net
-    init_net(1, ti.Vector([net_width, 0.0, 0.0]), ti.Vector([1.0, 0.0, 0.0]))
-    # Right net
-    init_net(2, ti.Vector([net_width*2, 0.0, 0.0]), ti.Vector([1.0, 0.0, 0.0]))
-
-    # Shackles
-    # Left net
-    init_shackles(0, ti.Vector([0.0, 0.0, 0.0]), ti.Vector([1.0, 0.0, 0.0]))
-    # Center net
-    init_shackles(1, ti.Vector([net_width, 0.0, 0.0]), ti.Vector([1.0, 0.0, 0.0]))
-    # Right net
-    init_shackles(2, ti.Vector([net_width*2, 0.0, 0.0]), ti.Vector([1.0, 0.0, 0.0]))
+    init_net()
+    init_shackles()
 
     # Ball
     x_ball[0] = ti.Vector([2.5, 15, 1.5])
     v_ball[0] = ti.Vector([0.0, 0.0, 0.0])
 
+init_points()
+
+@ti.kernel
+def update_vertices():
+    net_vertices()
+    shackle_vertices()
+
+update_vertices()
 
 # Scene rendering
 window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024), vsync=True)
@@ -52,30 +46,20 @@ scene = ti.ui.Scene()
 camera = ti.ui.Camera()
 current_t = 0.0
 
-init_points()
-
-@ti.kernel
-def update_vertices():
-    for i, j in ti.ndrange(net_nodes_width, net_nodes_height):
-        net_vertices_1[i * net_nodes_height + j] = x_net[0, i, j]
-        net_vertices_2[i * net_nodes_height + j] = x_net[1, i, j]
-        net_vertices_3[i * net_nodes_height + j] = x_net[2, i, j]
-
-
 while window.running:
-    if current_t > 7.5:
-        # Reset
-        init_points()
-        current_t = 0
+    # if current_t > 7.5:
+    #     # Reset
+    #     init_points()
+    #     current_t = 0
 
-    for i in range(substeps):
-        #substep()
-        current_t += dt
+    # for i in range(substeps):
+    #     #substep()
+    #     current_t += dt
     #update_boundary_nodes()
-    update_vertices()
+    #update_vertices()
 
-    camera.position(10, 10, 20)
-    camera.lookat(2.5, 0.0, 0)
+    camera.position(20, 10, 20)
+    camera.lookat(7.5, 0.0, 1.5)
     scene.set_camera(camera)
 
     scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))
@@ -92,22 +76,10 @@ while window.running:
                indices=net_indices,
                per_vertex_color=net_colors,
                two_sided=True)
-
-    # Draw a smaller ball to avoid visual penetration
     scene.particles(x_ball, radius=ball_radius * 0.95, color=(1, 0, 0))
-    scene.particles(v_ball, radius=1, color=(1, 0, 0))
-    # # For each rope
-    # for rid in range(max_ropes):
-    #     # Flatten rope positions to a 1D array
-    #     flatten_rope_positions(rid, flattened_positions_taichi)
-        
-    #     # Convert the 1D numpy array back to a Taichi field
-    #     x_rope_flat = ti.Vector.field(3, dtype=ti.f32, shape=(num_elements[rid]))
-    #     for i in range(num_elements[rid]):
-    #         x_rope_flat[i] = ti.Vector([flattened_positions[i * 3], flattened_positions[i * 3 + 1], flattened_positions[i * 3 + 2]])
-
-    #     # Render the rope
-    #     scene.lines(x_rope_flat, color=(0.5, 0.5, 0.5), width=2)
-    #scene.particles(shackle_pos_field_1D, radius=0.05, color=(0, 0, 1))
+    scene.particles(shakle_vertices_1, radius=0.05, color=(0, 0, 1))
+    scene.particles(shakle_vertices_2, radius=0.05, color=(0, 0, 1))
+    scene.particles(shakle_vertices_3, radius=0.05, color=(0, 0, 1))
+    
     canvas.scene(scene)
     window.show()

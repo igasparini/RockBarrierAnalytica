@@ -21,27 +21,22 @@ def init_rope(rid: ti.template(), length: ti.template(), start_pos: ti.template(
         v_rope[rid, i] = ti.Vector([0, 0, 0])
 
 # Nets
-max_nets = 3  # maximum number of nets
-
 net_quad_size_width = net_width / net_nodes_width
 net_quad_size_height = net_height / net_nodes_height
 
-x_net = ti.Vector.field(3, dtype=ti.f32, shape=(max_nets, net_nodes_width, net_nodes_height))
-v_net = ti.Vector.field(3, dtype=ti.f32, shape=(max_nets, net_nodes_width, net_nodes_height))
-m_net = ti.field(dtype=ti.f32, shape=(max_nets, net_nodes_width, net_nodes_height))
+x_net = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
+v_net = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
+m_net = ti.field(dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
 m_net.fill(net_node_mass)
 
 @ti.func
-def init_net(nid: ti.template(), start_pos: ti.template(), direction: ti.template()):
-    direction_norm = direction.normalized()
-    # Assume direction has non-zero x and z components for simplicity
-    # y-axis direction is cross product of direction and [0, 1, 0]
-    y_dir = ti.Vector([0, 1, 0]).cross(direction_norm).normalized()
-    x_dir = y_dir.cross(direction_norm).normalized()  # x-axis direction
-    for I in ti.grouped(x_net):
-        pos = start_pos + I[0] * net_quad_size_width * x_dir + I[1] * net_quad_size_height * direction_norm
-        x_net[nid, I[0], I[1]] = pos
-        v_net[nid, I[0], I[1]] = [0, 0, 0]
+def init_net():
+    for n, i, j in x_net:
+        x = n * net_width + i * net_quad_size_width
+        y = j * net_quad_size_height * ti.sin(epsilon)
+        z = j * net_quad_size_height * ti.cos(epsilon)
+        x_net[n, i, j] = [x, y, z]
+        v_net[n, i, j] = [0, 0, 0]
 
 spring_offsets = []
 if net_bending_springs:
@@ -56,30 +51,45 @@ else:
                 spring_offsets.append(ti.Vector([i, j]))
 
 # Shackles
-shackle_interval = 5  # create a shackle every 5 net nodes
-num_shackles = (net_nodes_width + shackle_interval - 1) // shackle_interval
-
-x_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(max_nets, num_shackles, 2))
-v_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(max_nets, num_shackles, 2))
+x_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
+v_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
 
 height_values = ti.field(dtype=ti.i32, shape=2)
 height_values[0] = 0
 height_values[1] = net_nodes_height - 1
 
-@ti.func
-def init_shackles(sid: ti.template(), start_pos: ti.template(), direction: ti.template()):
-    direction_norm = direction.normalized()
-    # Assume direction has non-zero x and z components for simplicity
-    # y-axis direction is cross product of direction and [0, 1, 0]
-    y_dir = ti.Vector([0, 1, 0]).cross(direction_norm).normalized()
-    x_dir = y_dir.cross(direction_norm).normalized()  # x-axis direction
+# @ti.func
+# def init_shackles(sid: ti.template(), start_pos: ti.template(), direction: ti.template()):
+#     direction_norm = direction.normalized()
+#     # Assume direction has non-zero x and z components for simplicity
+#     # y-axis direction is cross product of direction and [0, 1, 0]
+#     y_dir = ti.Vector([0, 1, 0]).cross(direction_norm).normalized()
+#     x_dir = y_dir.cross(direction_norm).normalized()  # x-axis direction
     
-    for i in range(0, num_shackles):
-        # Compute the shackle position at the bottom and top of the net
-        for j in range(2):  # use range(2) instead of the list
-            pos = start_pos + i * shackle_interval * net_quad_size_width * x_dir + height_values[j] * net_quad_size_height * direction_norm
-            x_shackle[sid, i, j] = pos
-            v_shackle[sid, i, j] = [0, 0, 0]
+#     for i in range(0, num_shackles):
+#         # Compute the shackle position at the bottom and top of the net
+#         for j in range(2):  # use range(2) instead of the list
+#             pos = start_pos + i * shackle_interval * net_quad_size_width * x_dir + height_values[j] * net_quad_size_height * direction_norm
+#             x_shackle[sid, i, j] = pos
+#             v_shackle[sid, i, j] = [0, 0, 0]
+
+# @ti.func
+# def init_shackles():
+#     for n, i, j in x_shackle:
+#         x = n * net_width + i * net_quad_size_width * shackle_interval
+#         y = j * net_height * ti.sin(epsilon)
+#         z = j * net_height * ti.cos(epsilon)
+#         x_shackle[n, i, j] = [x, y, z]
+#         v_shackle[n, i, j] = [0, 0, 0]
+
+@ti.func
+def init_shackles():
+    for I in ti.grouped(x_shackle):
+        x = I[0] * net_width + I[1] * (net_quad_size_width * shackle_interval)
+        y = I[2] * net_height * ti.sin(epsilon)
+        z = I[2] * net_height * ti.cos(epsilon)
+        x_shackle[I] = [x, y, z]
+        v_shackle[I] = [0, 0, 0]
 
 # Ball
 x_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))
