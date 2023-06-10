@@ -9,12 +9,12 @@ max_elements = 200  # assuming a maximum length of 20m for ropes
 x_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
 v_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
 m_rope = ti.field(dtype=ti.f32, shape=(max_ropes, max_elements))
-m_rope.fill(rope_node_mass)
 
 num_elements = ti.field(int, shape=(max_ropes))
 
 @ti.func
 def init_rope(rid: ti.template(), length: ti.template(), start_pos: ti.template(), direction: ti.template()):
+    m_rope.fill(rope_node_mass)
     num_elements[rid] = length * 10
     for i in range(num_elements[rid]):
         x_rope[rid, i] = start_pos + i * 0.1 * direction.normalized()
@@ -27,10 +27,10 @@ net_quad_size_height = net_height / net_nodes_height
 x_net = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
 v_net = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
 m_net = ti.field(dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
-m_net.fill(net_node_mass)
 
 @ti.func
 def init_net():
+    m_net.fill(net_node_mass)
     for n, i, j in x_net:
         x = n * net_width + i * net_quad_size_width
         y = j * net_quad_size_height * ti.sin(epsilon)
@@ -53,9 +53,11 @@ else:
 # Shackles
 x_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
 v_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
+m_shackle = ti.field(dtype=ti.f32, shape=(n_nets, num_shackles, 2))
 
 @ti.func
 def init_shackles():
+    m_shackle.fill(shackle_node_mass)
     for I in ti.grouped(x_shackle):
         x = I[0] * net_width + I[1] * (net_quad_size_width * shackle_interval)
         y = I[2] * net_height * ti.sin(epsilon)
@@ -67,4 +69,9 @@ def init_shackles():
 x_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))
 v_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))
 m_ball = ti.field(dtype=ti.f32, shape=())
-m_ball.fill(ball_mass)
+
+@ti.func
+def init_ball(ball_center: ti.template(), ball_velocity: ti.template()):
+    m_ball.fill(ball_mass)
+    x_ball[0] = ball_center
+    v_ball[0] = ball_velocity

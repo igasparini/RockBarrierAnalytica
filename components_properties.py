@@ -37,6 +37,7 @@ shackle_spring_pj = 1e6 # pin joint
 shackle_damp_pj = 1e3
 shackle_spring_sj = 1e4 # sliding joint
 shackle_damp_sj = 1e2
+shackle_node_mass = 1
 
 # Ball
 ball_radius = 0.5
