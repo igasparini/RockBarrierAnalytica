@@ -17,14 +17,10 @@ init_mesh_indices()
 @ti.kernel
 def init_points():
     init_net()
-    init_shackles() 
+    init_shackles()
+    init_rope_low_bearing()
+    init_rope_up_bearing()
     init_ball(ti.Vector([2.5, 15, 1.5]), ti.Vector([0.0, 0.0, 0.0]))
-
-    # Ropes
-    # Lower bearing rope
-    init_rope(0, 20, ti.Vector([-7.5, 0.0, 0.0]), ti.Vector([1, 0, 0]))
-    # Upper bearing rope
-    init_rope(1, 20, ti.Vector([-7.5, 0.0, net_height]), ti.Vector([1, 0, 0]))
 
 init_points()
 
@@ -81,6 +77,7 @@ while window.running:
     scene.particles(shakle_vertices_1, radius=0.05, color=(0, 0, 1))
     scene.particles(shakle_vertices_2, radius=0.05, color=(0, 0, 1))
     scene.particles(shakle_vertices_3, radius=0.05, color=(0, 0, 1))
+    scene.lines(rope_vertices, color=(0.5, 0.5, 0.5), width=2)
     
     canvas.scene(scene)
     window.show()

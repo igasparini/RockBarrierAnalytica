@@ -1,7 +1,7 @@
 import taichi as ti
 
 from components_properties import *
-from components_init import x_net, x_shackle
+from components_init import x_net, x_shackle, x_rope
 
 # Nets rendering
 net_num_triangles = int((net_nodes_width - 1) * (net_nodes_height - 1) * 2)
@@ -49,3 +49,11 @@ def shackle_vertices():
         shakle_vertices_1[i * 2 + j] = x_shackle[0, i, j]
         shakle_vertices_2[i * 2 + j] = x_shackle[1, i, j]
         shakle_vertices_3[i * 2 + j] = x_shackle[2, i, j]
+
+# Ropes rendering
+rope_vertices = ti.Vector.field(3, dtype=ti.f32, shape=max_ropes * max_elements)
+
+@ti.func
+def rope_vertices():
+    for rid, eid in ti.ndrange(max_ropes, max_elements):
+        rope_vertices[rid * max_elements + eid] = x_rope[rid, eid]
