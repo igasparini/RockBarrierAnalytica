@@ -31,7 +31,7 @@ def init_mesh_indices(): # since Taichi only supports the rendering of triangles
             net_colors[i * net_nodes_height + j] = (0.5, 0.5, 0.5)
 
 @ti.func
-def net_vertices():
+def update_net_vertices():
     for i, j in ti.ndrange(net_nodes_width, net_nodes_height):
         net_vertices_1[i * net_nodes_height + j] = x_net[0, i, j]
         net_vertices_2[i * net_nodes_height + j] = x_net[1, i, j]
@@ -44,7 +44,7 @@ shakle_vertices_2 = ti.Vector.field(3, dtype=ti.f32, shape=num_shackles * 2)
 shakle_vertices_3 = ti.Vector.field(3, dtype=ti.f32, shape=num_shackles * 2)
 
 @ti.func
-def shackle_vertices():
+def update_shackle_vertices():
     for i, j in ti.ndrange(num_shackles, 2):
         shakle_vertices_1[i * 2 + j] = x_shackle[0, i, j]
         shakle_vertices_2[i * 2 + j] = x_shackle[1, i, j]
@@ -54,6 +54,6 @@ def shackle_vertices():
 rope_vertices = ti.Vector.field(3, dtype=ti.f32, shape=max_ropes * max_elements)
 
 @ti.func
-def rope_vertices():
+def update_rope_vertices():
     for rid, eid in ti.ndrange(max_ropes, max_elements):
         rope_vertices[rid * max_elements + eid] = x_rope[rid, eid]

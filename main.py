@@ -20,6 +20,7 @@ def init_points():
     init_shackles()
     init_rope_low_bearing()
     init_rope_up_bearing()
+    init_rope_upslope()
     init_ball(ti.Vector([2.5, 15, 1.5]), ti.Vector([0.0, 0.0, 0.0]))
 
 init_points()
@@ -30,8 +31,9 @@ init_points()
 
 @ti.kernel
 def update_vertices():
-    net_vertices()
-    shackle_vertices()
+    update_net_vertices()
+    update_shackle_vertices()
+    update_rope_vertices()
 
 update_vertices()
 
@@ -55,8 +57,8 @@ while window.running:
     #update_boundary_nodes()
     #update_vertices()
 
-    camera.position(20, 10, 20)
-    camera.lookat(7.5, 0.0, 1.5)
+    camera.position(27.5, 2.0, 3.0) #20, 10, 40
+    camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 
     scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))
@@ -77,7 +79,7 @@ while window.running:
     scene.particles(shakle_vertices_1, radius=0.05, color=(0, 0, 1))
     scene.particles(shakle_vertices_2, radius=0.05, color=(0, 0, 1))
     scene.particles(shakle_vertices_3, radius=0.05, color=(0, 0, 1))
-    scene.lines(rope_vertices, color=(0.5, 0.5, 0.5), width=2)
+    scene.lines(rope_vertices, color=(0, 1, 0), width=2) #(0.5, 0.5, 0.5)
     
     canvas.scene(scene)
     window.show()
