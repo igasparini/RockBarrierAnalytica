@@ -38,7 +38,7 @@ def update_vertices():
 update_vertices()
 
 # Scene rendering
-window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024), vsync=True)
+window = ti.ui.Window("RockfallBarrierAnalytica Simulation on GGUI", (1024, 1024), vsync=True)
 canvas = window.get_canvas()
 #canvas.set_background_color((1, 1, 1))
 scene = ti.ui.Scene()
@@ -57,8 +57,8 @@ while window.running:
     #update_boundary_nodes()
     #update_vertices()
 
-    camera.position(27.5, 2.0, 3.0) #20, 10, 40
-    camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
+    camera.position(7.5, 30.0, 1.0) #20, 10, 40
+    camera.lookat(7.5, 0.0, 0.0) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 
     scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))
@@ -79,7 +79,7 @@ while window.running:
     scene.particles(shakle_vertices_1, radius=0.05, color=(0, 0, 1))
     scene.particles(shakle_vertices_2, radius=0.05, color=(0, 0, 1))
     scene.particles(shakle_vertices_3, radius=0.05, color=(0, 0, 1))
-    scene.lines(rope_vertices, color=(0, 1, 0), width=2) #(0.5, 0.5, 0.5)
+    scene.lines(rope_vertices, color=(0, 1, 0), width=2)
     
     canvas.scene(scene)
     window.show()

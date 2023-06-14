@@ -9,7 +9,7 @@ a = net_width
 L = 3
 h = 5
 f = 0.2
-b = 2
+b = 3
 epsilon = 0
 
 epsilon = math.radians(epsilon) # convert in radians
@@ -20,7 +20,7 @@ delta = math.atan(L / b)
 # Ropes
 rope_node_mass = 0.5
 max_ropes = 14  # maximum number of ropes
-max_elements = 200  # assuming a maximum length of 20m for ropes
+max_elements = 300  # assuming a maximum length of 30m for ropes
 
 # Nets
 net_nodes_width = 107
