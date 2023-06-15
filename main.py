@@ -18,9 +18,10 @@ init_mesh_indices()
 def init_points():
     init_net()
     init_shackles()
-    init_rope_low_bearing()
-    init_rope_up_bearing()
+    init_rope_bearing_low()
+    init_rope_bearing_up()
     init_rope_upslope()
+    init_rope_support_lat()
     init_ball(ti.Vector([2.5, 15, 1.5]), ti.Vector([0.0, 0.0, 0.0]))
 
 init_points()

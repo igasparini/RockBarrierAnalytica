@@ -15,7 +15,7 @@ num_elements_lb_horizontal = round(length_lb_horizontal * 10)
 num_elements_lb_angled = round(length_lb_angled * 10)
 
 @ti.func
-def init_rope_low_bearing():
+def init_rope_bearing_low():
     rid = 0
     start_pos = ti.Vector([-b, 0.0, 0.0])
     direction_angled_up = ti.Vector([b, 0, f])
@@ -40,7 +40,7 @@ num_elements_ub_horizontal = round(length_ub_horizontal * 10)
 num_elements_ub_angled = round(length_ub_angled * 10)
 
 @ti.func
-def init_rope_up_bearing():
+def init_rope_bearing_up():
     rid = 1
     start_pos = ti.Vector([-b, 0.0, 0.0])
     direction_angled_up = ti.Vector([b, 0, (L + f)])
@@ -57,7 +57,6 @@ def init_rope_up_bearing():
     for i in ti.ndrange((num_elements_ub_angled)):
         x_rope[rid, offset + i] = ti.Vector([(net_width * 3), 0.0, (L + f)]) + (i * 0.1 * direction_angled_down.normalized())
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
-
 
 # upslope ropes
 length_upslope = ti.sqrt((a/2 - 0)**2 + (h - 0)**2 + (0 - (L + f))**2)
@@ -78,24 +77,26 @@ def init_rope_upslope():
             x_rope[6 + v, w] = start_pos + ti.Vector([v * net_width, 0.0, 0.0]) + (w * 0.1) * direction_left.normalized()
             v_rope[6 + v, w] = ti.Vector([0, 0, 0])
 
+# lateral support ropes
+length_support = ti.sqrt(b**2 + (L + f)**2)
+num_elements_support = round(length_support * 10)
 
-# # lateral support ropes
-# @ti.func
-# def init_rope_lat_support(rid: ti.template(), length: ti.template(), start_pos: ti.template(), direction: ti.template()):
-#     m_rope.fill(rope_node_mass)
-#     num_elements[rid] = length * 10
-#     for i in range(num_elements[rid]):
-#         x_rope[rid, i] = start_pos + i * 0.1 * direction.normalized()
-#         v_rope[rid, i] = ti.Vector([0, 0, 0])
+@ti.func
+def init_rope_support_lat():
+    rid = 10
+    shift = 0.25
+    start_pos_up = ti.Vector([-b + shift, 0.0, 0.0])
+    start_pos_down = ti.Vector([(net_width * 3), 0.0, (L + f)])
+    direction_up = ti.Vector([b - shift, 0, (L + f)])
+    direction_down = ti.Vector([b - shift, 0, -(L + f)])
+    for i in ti.ndrange((num_elements_support)):
+        x_rope[rid, i] = start_pos_up + (i * 0.1 * direction_up.normalized())
+        v_rope[rid, i] = ti.Vector([0, 0, 0])
+    offset = num_elements_support
+    for i in ti.ndrange((num_elements_support)):
+        x_rope[rid, offset + i] = start_pos_down + (i * 0.1 * direction_down.normalized())
+        v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
 
-# @ti.kernel
-# def init_all_ropes():
-#     m_rope.fill(rope_node_mass)
-#     for rid in range(max_ropes):
-#         if rid == 0 or rid == 1:
-#             init_special_rope(rid, ... , ... , ...)  # Fill with suitable parameters
-#         else:
-#             init_rope(rid, ... , ... , ...)  # Fill with suitable parameters
 
 # Nets
 net_quad_size_width = net_width / net_nodes_width
