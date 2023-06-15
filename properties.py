@@ -1,5 +1,8 @@
+import taichi as ti
 import numpy as np
 import math
+
+gravity = ti.Vector([0.0, -9.81, 0.0])
 
 # General geometries of the net ('Grundlagen zur Qualitätsbeurteilung', S. 22-23)
 net_width = 5.0 # 5m

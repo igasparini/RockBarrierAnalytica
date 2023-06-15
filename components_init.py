@@ -1,7 +1,7 @@
 import taichi as ti
 from math import pi
 
-from components_properties import *
+from properties import *
 
 # Ropes
 x_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
@@ -121,12 +121,13 @@ if net_bending_springs:
     for i in range(-2, 3):
         for j in range(-2, 3):
             if (i, j) != (0, 0) and abs(i) + abs(j) <= 2:
-                spring_offsets.append(ti.Vector([i, j]))
+                spring_offsets.append(ti.Vector([0, i, j]))
 else:
     for i in range(-1, 2):
         for j in range(-1, 2):
             if (i, j) != (0, 0):
-                spring_offsets.append(ti.Vector([i, j]))
+                spring_offsets.append(ti.Vector([0, i, j]))
+
 
 # Shackles
 x_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
@@ -143,6 +144,7 @@ def init_shackles():
         x_shackle[n, i, j] = [x, y, z]
         v_shackle[n, i, j] = [0, 0, 0]
 
+
 # Ball
 x_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))
 v_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))
@@ -153,3 +155,12 @@ def init_ball(ball_center: ti.template(), ball_velocity: ti.template()):
     m_ball.fill(ball_mass)
     x_ball[0] = ball_center
     v_ball[0] = ball_velocity
+
+
+# Constants
+net_gravity = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
+
+@ti.kernel
+def init_constants():
+    for n, i, j in net_gravity:
+        net_gravity[n, i, j] = gravity

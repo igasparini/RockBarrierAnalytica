@@ -1,6 +1,6 @@
 import taichi as ti
 
-from components_properties import *
+from properties import *
 from components_init import x_net, x_shackle, x_rope
 
 # Nets rendering
