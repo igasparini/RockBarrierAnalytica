@@ -155,12 +155,3 @@ def init_ball(ball_center: ti.template(), ball_velocity: ti.template()):
     m_ball.fill(ball_mass)
     x_ball[0] = ball_center
     v_ball[0] = ball_velocity
-
-
-# Constants
-net_gravity = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
-
-@ti.kernel
-def init_constants():
-    for n, i, j in net_gravity:
-        net_gravity[n, i, j] = gravity
