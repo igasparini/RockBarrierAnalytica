@@ -130,19 +130,30 @@ else:
 
 
 # Shackles
-x_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
-v_shackle = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles, 2))
-m_shackle = ti.field(dtype=ti.f32, shape=(n_nets, num_shackles, 2))
+x_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
+v_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
+m_shackle_hor = ti.field(dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
+
+x_shackle_ver = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets-1, num_shackles_ver))
+v_shackle_ver = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets-1, num_shackles_ver))
+m_shackle_ver = ti.field(dtype=ti.f32, shape=(n_nets-1, num_shackles_ver))
 
 @ti.func
 def init_shackles():
-    m_shackle.fill(shackle_node_mass)
-    for n, i, j in x_shackle:
+    m_shackle_hor.fill(shackle_node_mass)
+    m_shackle_ver.fill(shackle_node_mass)
+    for n, i, j in x_shackle_hor:
         x = n * net_width + i * (net_quad_size_width * shackle_interval)
         y = j * net_height * ti.sin(epsilon)
         z = j * net_height * ti.cos(epsilon) + f
-        x_shackle[n, i, j] = [x, y, z]
-        v_shackle[n, i, j] = [0, 0, 0]
+        x_shackle_hor[n, i, j] = [x, y, z]
+        v_shackle_hor[n, i, j] = [0, 0, 0]
+    for n, i in x_shackle_ver:
+        x = (n + 1) * net_width
+        y = i * net_height * ti.sin(epsilon)
+        z = i * (net_quad_size_height * shackle_interval) * ti.cos(epsilon) + f
+        x_shackle_ver[n, i] = [x, y, z]
+        v_shackle_ver[n, i] = [0, 0, 0]    
 
 
 # Ball

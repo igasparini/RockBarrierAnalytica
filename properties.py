@@ -37,7 +37,8 @@ net_bending_springs = False # bending springs facilitate bending or deformation 
 
 # Shackles
 shackle_interval = 5  # create a shackle every 5 net nodes
-num_shackles = (net_nodes_width + shackle_interval - 1) // shackle_interval
+num_shackles_hor = (net_nodes_width + shackle_interval - 1) // shackle_interval
+num_shackles_ver = (net_nodes_height + shackle_interval - 1) // shackle_interval
 shackle_friction_coefficient = 0.85
 shackle_spring_pj = 1e6 # pin joint
 shackle_damp_pj = 1e3

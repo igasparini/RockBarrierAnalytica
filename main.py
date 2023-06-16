@@ -21,7 +21,7 @@ def init_points():
     init_rope_bearing_up()
     init_rope_upslope()
     init_rope_support_lat()
-    init_ball(ti.Vector([7.5, 15, 1.5]), ti.Vector([0.0, 0.0, 0.0]))
+    init_ball(ti.Vector([7.5, 5, 1.5]), ti.Vector([0.0, 0.0, 0.0]))
 
 init_points()
 
@@ -75,61 +75,88 @@ def substep():
     v_ball[0].y += gravity.y * dt
     x_ball[0] += dt * v_ball[0]
 
-    for n, i, j in v_shackle:
-        v_shackle[n, i, j].x = v_net[n, i * shackle_interval, j * (net_nodes_height - 1)].x
-        v_shackle[n, i, j].x *= shackle_friction_coefficient
+    # for n, i, j in x_net:
+    #     x_net[n, i, j] += v_net[n, i, j] * dt
 
-    for n, i, j in v_shackle:
-        v_net[n, i * shackle_interval, j * (net_nodes_height - 1)] = v_shackle[n, i, j]
+    # Impulse for horizontal shackles
+    for n, i, j in v_shackle_hor:
+        net_node = ti.Vector([n, i * shackle_interval, j * (net_nodes_height - 1)])
+        displacement = x_shackle_hor[n, i, j] - x_net[net_node]
+        correction = displacement / 2 
 
-    for n, i, j in x_net:
-        x_net[n, i, j] += v_net[n, i, j] * dt
+        impulse = correction * dt
+        v_net[net_node] += impulse / m_net[net_node]
+        v_shackle_hor[n, i, j] -= impulse / m_shackle_hor[n, i, j]
 
-@ti.func
-def find_segment_for_projection(node_position, current_position, rope_nodes, friction_coefficient, rope_id):
-    # Initialize with current segment
-    start_node = int(current_position)
-    end_node = start_node + 1
-    direction = (rope_nodes[rope_id, end_node] - rope_nodes[rope_id, start_node]).normalized()
-    relative_pos = node_position - rope_nodes[rope_id, start_node]
-    projected_pos = relative_pos.dot(direction) * direction + rope_nodes[rope_id, start_node]
+        x_net[net_node] += correction
+        x_shackle_hor[n, i, j] -= correction
 
-    # While the projected position is not in the current segment
-    while not (rope_nodes[rope_id, start_node] <= projected_pos <= rope_nodes[rope_id, end_node]):
-        # Calculate the force required to move the shackle to the next segment
-        distance_to_next_segment = ti.sqrt((rope_nodes[rope_id, end_node] - projected_pos).norm_sqr())
-        force_required = distance_to_next_segment * friction_coefficient
+    # Impulse for vertical shackles
+    for n, i in v_shackle_ver:
+        net_node_1 = ti.Vector([n, net_nodes_width - 1, i * shackle_interval])
+        net_node_2 = ti.Vector([n + 1, 0, i * shackle_interval])
+        middle_point = (x_net[net_node_1] + x_net[net_node_2]) / 2
+        displacement_1 = middle_point - x_net[net_node_1]
+        displacement_2 = middle_point - x_net[net_node_2]
 
-        # If the net node's force is not enough to overcome the friction, break
-        if force_required > 1: #net_node_force: 
-            break
+        impulse_1 = displacement_1 * dt
+        impulse_2 = displacement_2 * dt
+        v_net[net_node_1] += impulse_1 / m_net[net_node_1]
+        v_net[net_node_2] += impulse_2 / m_net[net_node_2]
+        v_shackle_ver[n, i] -= (impulse_1 + impulse_2) / m_shackle_ver[n, i]
 
-        # Update to the next segment
-        start_node = end_node
-        end_node += 1
-        direction = (rope_nodes[rope_id, end_node] - rope_nodes[rope_id, start_node]).normalized()
-        projected_pos = relative_pos.dot(direction) * direction + rope_nodes[rope_id, start_node]
+        x_net[net_node_1] += displacement_1
+        x_net[net_node_2] += displacement_2
+        x_shackle_ver[n, i] = middle_point
 
-    return start_node, end_node
+    # for n, i, j in x_net:
+    #     x_net[n, i, j] += v_net[n, i, j] * dt
 
-@ti.func
-def project_to_rope(n, i, j, rid, rope_x, net_x):
-    current_position = x_shackle[n, i, j]
-    if j == 0:
-        start_node, end_node = find_segment_for_projection(net_x[n, i * shackle_interval, j], current_position, rope_x, shackle_friction_coefficient, rid)
-    else:
-        start_node, end_node = find_segment_for_projection(net_x[n, i * shackle_interval, j * (net_nodes_height - 1)], current_position, rope_x, shackle_friction_coefficient, rid)
-    direction = (rope_x[rid, end_node] - rope_x[rid, start_node]).normalized()
-    if j == 0:
-        relative_pos = net_x[n, i * shackle_interval, j] - rope_x[rid, start_node]
-    else:
-        relative_pos = net_x[n, i * shackle_interval, j * (net_nodes_height - 1)] - rope_x[rid, start_node]
-    projected_pos = relative_pos.dot(direction) * direction + rope_x[rid, start_node]
+# @ti.func
+# def find_segment_for_projection(node_position, current_position, rope_nodes, friction_coefficient, rope_id):
+#     # Initialize with current segment
+#     start_node = int(current_position)
+#     end_node = start_node + 1
+#     direction = (rope_nodes[rope_id, end_node] - rope_nodes[rope_id, start_node]).normalized()
+#     relative_pos = node_position - rope_nodes[rope_id, start_node]
+#     projected_pos = relative_pos.dot(direction) * direction + rope_nodes[rope_id, start_node]
 
-    # Update the current position of the shackle on the rope
-    x_shackle[n, i, j] = start_node + projected_pos  # Assuming nodes are equally spaced
+#     # While the projected position is not in the current segment
+#     while not (rope_nodes[rope_id, start_node] <= projected_pos <= rope_nodes[rope_id, end_node]):
+#         # Calculate the force required to move the shackle to the next segment
+#         distance_to_next_segment = ti.sqrt((rope_nodes[rope_id, end_node] - projected_pos).norm_sqr())
+#         force_required = distance_to_next_segment * friction_coefficient
 
-    return projected_pos
+#         # If the net node's force is not enough to overcome the friction, break
+#         if force_required > 1: #net_node_force: 
+#             break
+
+#         # Update to the next segment
+#         start_node = end_node
+#         end_node += 1
+#         direction = (rope_nodes[rope_id, end_node] - rope_nodes[rope_id, start_node]).normalized()
+#         projected_pos = relative_pos.dot(direction) * direction + rope_nodes[rope_id, start_node]
+
+#     return start_node, end_node
+
+# @ti.func
+# def project_to_rope(n, i, j, rid, rope_x, net_x):
+#     current_position = x_shackle_hor[n, i, j]
+#     if j == 0:
+#         start_node, end_node = find_segment_for_projection(net_x[n, i * shackle_interval, j], current_position, rope_x, shackle_friction_coefficient, rid)
+#     else:
+#         start_node, end_node = find_segment_for_projection(net_x[n, i * shackle_interval, j * (net_nodes_height - 1)], current_position, rope_x, shackle_friction_coefficient, rid)
+#     direction = (rope_x[rid, end_node] - rope_x[rid, start_node]).normalized()
+#     if j == 0:
+#         relative_pos = net_x[n, i * shackle_interval, j] - rope_x[rid, start_node]
+#     else:
+#         relative_pos = net_x[n, i * shackle_interval, j * (net_nodes_height - 1)] - rope_x[rid, start_node]
+#     projected_pos = relative_pos.dot(direction) * direction + rope_x[rid, start_node]
+
+#     # Update the current position of the shackle on the rope
+#     x_shackle_hor[n, i, j] = start_node + projected_pos  # Assuming nodes are equally spaced
+
+#     return projected_pos
 
 
 @ti.kernel
@@ -177,9 +204,11 @@ while window.running:
                per_vertex_color=net_colors,
                two_sided=True)
     scene.particles(x_ball, radius=ball_radius * 0.95, color=(1, 0, 0))
-    scene.particles(shakle_vertices_1, radius=0.05, color=(0, 0, 1))
-    scene.particles(shakle_vertices_2, radius=0.05, color=(0, 0, 1))
-    scene.particles(shakle_vertices_3, radius=0.05, color=(0, 0, 1))
+    scene.particles(shakle_vertices_hor_1, radius=0.05, color=(0, 0, 1))
+    scene.particles(shakle_vertices_hor_2, radius=0.05, color=(0, 0, 1))
+    scene.particles(shakle_vertices_hor_3, radius=0.05, color=(0, 0, 1))
+    scene.particles(shakle_vertices_ver_1, radius=0.05, color=(0, 0, 1))
+    scene.particles(shakle_vertices_ver_2, radius=0.05, color=(0, 0, 1))
     scene.lines(rope_vertices, color=(0, 1, 0), width=2)
     
     canvas.scene(scene)
