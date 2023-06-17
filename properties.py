@@ -21,15 +21,17 @@ beta = math.atan((a/2) / np.sqrt((h - L * np.sin(epsilon))**2 + (L * np.cos(epsi
 delta = math.atan(L / b)
 
 # Ropes
-rope_node_mass = 0.5
+rope_node_mass = 0.1
 max_ropes = 14  # maximum number of ropes
 max_elements = 300  # assuming a maximum length of 30m for ropes
+rope_spring = 1e6
+rope_damper = 1
 
 # Nets
 net_nodes_width = 107 #107
 net_nodes_height = 64 #64
-net_spring = 1e5 #1e5
-net_spring_yield = 5e4 # 1.1e5
+net_spring = 1e6 #1e5
+net_spring_yield = 5e6 # 1.1e5
 net_dashpot_damping = 1.5e4 #1e4
 net_drag_damping = 5
 net_node_mass = 1
@@ -45,6 +47,11 @@ shackle_damp_pj = 1e3
 shackle_spring_sj = 1e6 # 1e4 sliding joint
 shackle_damp_sj = 1e2
 shackle_node_mass = 1
+
+# Posts
+post_node_mass = 50
+post_spring = 1e8
+post_damper = 1
 
 # Ball
 ball_radius = 0.5

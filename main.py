@@ -21,96 +21,10 @@ def init_points():
     init_rope_bearing_up()
     init_rope_upslope()
     init_rope_support_lat()
+    init_posts()
     init_ball(ti.Vector([7.5, 5, 1.5]), ti.Vector([0.0, 0.0, 0.0]))
 
 init_points()
-
-# step function
-@ti.kernel
-def substep():
-    for i in ti.grouped(x_net):
-        v_net[i] += gravity * dt
-
-    for i in ti.grouped(x_net):
-        force = ti.Vector([0.0, 0.0, 0.0])
-        for spring_offset in ti.static(spring_offsets):
-            j = i + spring_offset
-            if 0 <= j[0] < n_nets and 0 <= j[1] < net_nodes_width and 0 <= j[2] < net_nodes_height:
-                x_ij = x_net[i] - x_net[j]
-                v_ij = v_net[i] - v_net[j]
-                d = x_ij.normalized()
-                current_dist = x_ij.norm()
-
-                grid_dist_ij = ti.Vector([abs(i[1] - j[1]) * net_quad_size_width,
-                          abs(i[2] - j[2]) * net_quad_size_height])
-                original_dist = grid_dist_ij.norm()
-
-                # Spring force with yielding
-                displacement_ratio = current_dist / original_dist - 1
-                if displacement_ratio < net_spring_yield / net_spring:
-                    force += -net_spring * displacement_ratio * d
-                else:
-                    force += -net_spring_yield * d
-                
-                # Dashpot damping
-                force += -v_ij.dot(d) * d * net_dashpot_damping * min(net_quad_size_width, net_quad_size_height)
-
-        v_net[i] += force * dt / m_net[i]
-        
-    for i in ti.grouped(x_net):
-        v_net[i] *= ti.exp(-net_drag_damping * dt)
-        displacement = x_net[i] - x_ball[0]
-        distance = displacement.norm()
-        if distance <= ball_radius:
-            collision_normal = displacement.normalized()
-            penetration_depth = ball_radius - distance
-            collision_response_force = collision_spring * penetration_depth ** 2 * collision_normal 
-            relative_velocity = v_net[i] - v_ball[0]
-            damping_force = collision_damping * relative_velocity.dot(collision_normal) * collision_normal
-
-            x_net[i] += penetration_depth * collision_normal
-            v_net[i] += (collision_response_force * dt - damping_force * dt) / m_net[i]
-            v_ball[0] -= (collision_response_force * dt - damping_force * dt) / m_ball[None]
-    
-    v_ball[0].y += gravity.y * dt
-    x_ball[0] += dt * v_ball[0]
-
-    # for n, i, j in x_net:
-    #     x_net[n, i, j] += v_net[n, i, j] * dt
-
-    # Impulse for horizontal shackles
-    for n, i, j in v_shackle_hor:
-        net_node = ti.Vector([n, i * shackle_interval, j * (net_nodes_height - 1)])
-        displacement = x_shackle_hor[n, i, j] - x_net[net_node]
-        correction = displacement / 2 
-
-        impulse = correction * dt
-        v_net[net_node] += impulse / m_net[net_node]
-        v_shackle_hor[n, i, j] -= impulse / m_shackle_hor[n, i, j]
-
-        x_net[net_node] += correction
-        x_shackle_hor[n, i, j] -= correction
-
-    # Impulse for vertical shackles
-    for n, i in v_shackle_ver:
-        net_node_1 = ti.Vector([n, net_nodes_width - 1, i * shackle_interval])
-        net_node_2 = ti.Vector([n + 1, 0, i * shackle_interval])
-        middle_point = (x_net[net_node_1] + x_net[net_node_2]) / 2
-        displacement_1 = middle_point - x_net[net_node_1]
-        displacement_2 = middle_point - x_net[net_node_2]
-
-        impulse_1 = displacement_1 * dt
-        impulse_2 = displacement_2 * dt
-        v_net[net_node_1] += impulse_1 / m_net[net_node_1]
-        v_net[net_node_2] += impulse_2 / m_net[net_node_2]
-        v_shackle_ver[n, i] -= (impulse_1 + impulse_2) / m_shackle_ver[n, i]
-
-        x_net[net_node_1] += displacement_1
-        x_net[net_node_2] += displacement_2
-        x_shackle_ver[n, i] = middle_point
-
-    # for n, i, j in x_net:
-    #     x_net[n, i, j] += v_net[n, i, j] * dt
 
 # @ti.func
 # def find_segment_for_projection(node_position, current_position, rope_nodes, friction_coefficient, rope_id):
@@ -158,12 +72,156 @@ def substep():
 
 #     return projected_pos
 
+# step function
+@ti.kernel
+def substep():
+
+    # Gravity
+    v_ball[0] += gravity * dt
+    for i in ti.grouped(x_net):
+        v_net[i] += gravity * dt
+    for i in ti.grouped(x_shackle_hor):
+        v_shackle_hor[i] += gravity * dt
+    for i in ti.grouped(x_shackle_ver):
+        v_shackle_ver[i] += gravity * dt
+    # for i in ti.grouped(x_rope):
+    #     v_rope[i] += gravity * dt
+    for i, j in x_post:
+        if j == 1:
+            v_post[i, j] += gravity * dt        
+
+    # Ball collision
+    for i in ti.grouped(x_net):
+        displacement = x_net[i] - x_ball[0]
+        distance = displacement.norm()
+        if distance <= ball_radius:
+            collision_normal = displacement.normalized()
+            penetration_depth = ball_radius - distance
+            collision_response_force = collision_spring * penetration_depth ** 2 * collision_normal 
+            relative_velocity = v_net[i] - v_ball[0]
+            damping_force = collision_damping * relative_velocity.dot(collision_normal) * collision_normal
+
+            x_net[i] += penetration_depth * collision_normal
+            v_net[i] += (collision_response_force * dt - damping_force * dt) / m_net[i]
+            v_ball[0] -= (collision_response_force * dt - damping_force * dt) / m_ball[None]
+
+    # Net mechanic
+    for i in ti.grouped(x_net):
+        force = ti.Vector([0.0, 0.0, 0.0])
+        for spring_offset in ti.static(spring_offsets):
+            j = i + spring_offset
+            if 0 <= j[0] < n_nets and 0 <= j[1] < net_nodes_width and 0 <= j[2] < net_nodes_height:
+                x_ij = x_net[i] - x_net[j]
+                v_ij = v_net[i] - v_net[j]
+                d = x_ij.normalized()
+                current_dist = x_ij.norm()
+
+                grid_dist_ij = ti.Vector([abs(i[1] - j[1]) * net_quad_size_width,
+                                          abs(i[2] - j[2]) * net_quad_size_height])
+                original_dist = grid_dist_ij.norm()
+
+                # Spring force with yielding
+                displacement_ratio = current_dist / original_dist - 1
+                if displacement_ratio < net_spring_yield / net_spring:
+                    force += -net_spring * displacement_ratio * d
+                else:
+                    force += -net_spring_yield * d
+                
+                # Dashpot damping
+                force += -v_ij.dot(d) * d * net_dashpot_damping * min(net_quad_size_width, net_quad_size_height)
+
+        v_net[i] += force * dt / m_net[i]
+
+    # Impulse for horizontal shackles
+    for n, i, j in v_shackle_hor:
+        net_node = ti.Vector([n, i * shackle_interval, j * (net_nodes_height - 1)])
+        displacement = x_shackle_hor[n, i, j] - x_net[net_node]
+        correction = displacement / 2 
+
+        impulse = correction * dt
+        v_net[net_node] += impulse / m_net[net_node]
+        v_shackle_hor[n, i, j] -= impulse / m_shackle_hor[n, i, j]
+
+        x_net[net_node] += correction
+        x_shackle_hor[n, i, j] -= correction
+
+    # Impulse for vertical shackles
+    for n, i in v_shackle_ver:
+        net_node_1 = ti.Vector([n, net_nodes_width - 1, i * shackle_interval])
+        net_node_2 = ti.Vector([n + 1, 0, i * shackle_interval])
+        middle_point = (x_net[net_node_1] + x_net[net_node_2]) / 2
+        displacement_1 = middle_point - x_net[net_node_1]
+        displacement_2 = middle_point - x_net[net_node_2]
+
+        impulse_1 = displacement_1 * dt
+        impulse_2 = displacement_2 * dt
+        v_net[net_node_1] += impulse_1 / m_net[net_node_1]
+        v_net[net_node_2] += impulse_2 / m_net[net_node_2]
+        v_shackle_ver[n, i] -= (impulse_1 + impulse_2) / m_shackle_ver[n, i]
+
+        x_net[net_node_1] += displacement_1
+        x_net[net_node_2] += displacement_2
+        x_shackle_ver[n, i] = middle_point
+
+    # Ropes
+    for rid, i in x_rope:
+        if m_rope[rid, i] == 0.0:  # Skip uninitialized elements
+            continue
+        force = ti.Vector([0.0, 0.0, 0.0])
+        force += m_rope[rid, i] * gravity
+        force += -rope_damper * v_rope[rid, i]
+        d = 0.1 # rope rest length
+
+        # spring force with the previous node in the rope
+        if i > 0: 
+            length = x_rope[rid, i] - x_rope[rid, i - 1]
+            if length.norm() > d:
+                spring_force = -rope_spring * (length - d)
+                force += spring_force
+
+        # spring force with the next node in the rope
+        if i < max_elements - 1 and m_rope[rid, i + 1] != 0.0:  # Check next element
+            length = x_rope[rid, i] - x_rope[rid, i + 1]
+            if length.norm() > d:  # Only if the spring is stretched
+                spring_force = -rope_spring * (length - d)
+                force += spring_force
+
+        post_id = (rid - 2) // 2
+        if 2 <= rid < 10:
+            v_rope[rid, i] = v_post[post_id, i]
+
+        if i == 0 or i == max_elements - 1:
+            force = ti.Vector([0.0, 0.0, 0.0])
+
+        v_rope[rid, i] += dt * force / m_rope[rid, i]
+        if i != 0 and i != max_elements - 1:  
+            #v_rope[rid, i] *= ti.exp(-net_drag_damping * dt)  # air damping
+            x_rope[rid, i] += dt * v_rope[rid, i]
+
+
+    # Posts
+    for i, j in x_post:
+        if j == 1:
+            d = (x_post[i, 0] - x_post[i, j]).normalized()  # Direction towards the pivot
+            displacement = (x_post[i, 0] - x_post[i, j]).norm() - net_height
+            force = post_spring * displacement * d
+            v_post[i, j] += force * dt / m_post[i, j]
+            x_post[i, j] += v_post[i, j] * dt
+    
+    x_ball[0] += dt * v_ball[0]
+    for i in ti.grouped(x_net):
+        v_net[i] *= ti.exp(-net_drag_damping * dt)
+        x_net[i] += v_net[i] * dt
+    for i in ti.grouped(x_rope):
+        x_rope[i] += v_rope[i] * dt    
+
 
 @ti.kernel
 def update_vertices():
     update_net_vertices()
     update_shackle_vertices()
     update_rope_vertices()
+    update_post_vertices()
 
 # Scene rendering
 window = ti.ui.Window("RockfallBarrierAnalytica Simulation on GGUI", (1024, 1024), vsync=True)
@@ -185,7 +243,7 @@ while window.running:
 
     update_vertices()
 
-    camera.position(20, 10, 30) #20, 10, 40
+    camera.position(7.5, 2, 30) #20, 10, 40
     camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 
@@ -210,6 +268,7 @@ while window.running:
     scene.particles(shakle_vertices_ver_1, radius=0.05, color=(0, 0, 1))
     scene.particles(shakle_vertices_ver_2, radius=0.05, color=(0, 0, 1))
     scene.lines(rope_vertices, color=(0, 1, 0), width=2)
+    scene.lines(post_vertices, color=(1, 1, 1), width=5)
     
     canvas.scene(scene)
     window.show()

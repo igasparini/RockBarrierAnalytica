@@ -156,6 +156,21 @@ def init_shackles():
         v_shackle_ver[n, i] = [0, 0, 0]    
 
 
+# Posts
+x_post = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets + 1, 2))
+v_post = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets + 1, 2))
+m_post = ti.field(dtype=ti.f32, shape=(n_nets + 1, 2))
+
+@ti.func
+def init_posts():
+    m_post.fill(post_node_mass)
+    for n, i in x_post:
+        x = n * net_width
+        y = i * net_height * ti.sin(epsilon)
+        z = i * net_height * ti.cos(epsilon) + f
+        x_post[n, i] = [x, y, z]
+        v_post[n, i] = [0, 0, 0]
+
 # Ball
 x_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))
 v_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))

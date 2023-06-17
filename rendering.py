@@ -1,7 +1,7 @@
 import taichi as ti
 
 from properties import *
-from components_init import x_net, x_shackle_hor, x_shackle_ver, x_rope
+from components_init import x_net, x_shackle_hor, x_shackle_ver, x_rope, x_post
 
 # Nets rendering
 net_num_triangles = int((net_nodes_width - 1) * (net_nodes_height - 1) * 2)
@@ -64,3 +64,11 @@ rope_vertices = ti.Vector.field(3, dtype=ti.f32, shape=max_ropes * max_elements)
 def update_rope_vertices():
     for rid, eid in ti.ndrange(max_ropes, max_elements):
         rope_vertices[rid * max_elements + eid] = x_rope[rid, eid]
+
+# Posts rendering
+post_vertices = ti.Vector.field(3, dtype=ti.f32, shape= (n_nets + 1) * 2)
+
+@ti.func
+def update_post_vertices():
+    for pid, i in ti.ndrange(n_nets + 1, 2):
+        post_vertices[pid * 2 + i] = x_post[pid, i]
