@@ -249,7 +249,7 @@ def update_vertices():
     update_post_vertices()
 
 # Scene rendering
-window = ti.ui.Window("RockfallBarrierAnalytica Simulation on GGUI", (1024, 1024), vsync=True)
+window = ti.ui.Window("RockBarrierAnalytica Simulation on GGUI", (1024, 1024), vsync=True)
 canvas = window.get_canvas()
 #canvas.set_background_color((1, 1, 1))
 scene = ti.ui.Scene()
