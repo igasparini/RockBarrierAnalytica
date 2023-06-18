@@ -165,39 +165,53 @@ def substep():
 
     # Ropes
     for rid, i in x_rope:
-        if m_rope[rid, i] == 0.0:  # Skip uninitialized elements
+        if m_rope[rid, i] == 0:  # Skip uninitialized elements
             continue
         force = ti.Vector([0.0, 0.0, 0.0])
-        force += m_rope[rid, i] * gravity
-        force += -rope_damper * v_rope[rid, i]
-        d = 0.1 # rope rest length
+        v_rope[rid, i] += gravity * dt
+        d = 0.01  # rope rest length, < 0.1 is pre-tention
 
         # spring force with the previous node in the rope
         if i > 0: 
             length = x_rope[rid, i] - x_rope[rid, i - 1]
-            if length.norm() > d:
-                spring_force = -rope_spring * (length - d)
-                force += spring_force
+            length_norm = length.norm()
+            length_direction = length / length_norm if length_norm != 0 else 0
+            velocity_difference = v_rope[rid, i] - v_rope[rid, i - 1]
+            damping_force = -rope_damper * velocity_difference
+            spring_force = -rope_spring * abs(length_norm - d) * length_direction
+            force += spring_force + damping_force
 
         # spring force with the next node in the rope
-        if i < max_elements - 1 and m_rope[rid, i + 1] != 0.0:  # Check next element
+        if i < max_elements - 1 and m_rope[rid, i + 1] != 0.0:
             length = x_rope[rid, i] - x_rope[rid, i + 1]
-            if length.norm() > d:  # Only if the spring is stretched
-                spring_force = -rope_spring * (length - d)
-                force += spring_force
-
-        post_id = (rid - 2) // 2
-        if 2 <= rid < 10:
-            v_rope[rid, i] = v_post[post_id, i]
-
-        if i == 0 or i == max_elements - 1:
-            force = ti.Vector([0.0, 0.0, 0.0])
+            length_norm = length.norm()
+            length_direction = length / length_norm if length_norm != 0 else 0
+            velocity_difference = v_rope[rid, i] - v_rope[rid, i + 1]
+            damping_force = -rope_damper * velocity_difference
+            spring_force = -rope_spring * abs(length_norm - d) * length_direction
+            force += spring_force + damping_force
 
         v_rope[rid, i] += dt * force / m_rope[rid, i]
-        if i != 0 and i != max_elements - 1:  
-            #v_rope[rid, i] *= ti.exp(-net_drag_damping * dt)  # air damping
-            x_rope[rid, i] += dt * v_rope[rid, i]
+        x_rope[rid, i] += dt * v_rope[rid, i]
 
+        if i == 0 or (i < max_elements - 1 and m_rope[rid, i + 1] == 0.0):
+            if 0 <= rid <= 1:
+                v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+            if 2 <= rid < 10:
+                post_id = (rid - 2) // 2
+                #v_post[post_id, 1] -= force / m_post[post_id, 1]
+                if i == 0:
+                    #v_post[post_id, 1] -= force / m_post[post_id, 1]
+                    v_rope[rid, i] = v_post[post_id, 1]
+                if m_rope[rid, i + 1] == 0.0:
+                    v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+            if rid >= 10:
+                if i == 0:
+                    v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+                post_id = (rid - 10) * 3
+                if m_rope[rid, i + 1] == 0.0:
+                    v_rope[rid, i] = v_post[post_id, 1]
+            continue
 
     # Posts
     for i, j in x_post:
@@ -207,13 +221,13 @@ def substep():
             force = post_spring * displacement * d
             v_post[i, j] += force * dt / m_post[i, j]
             x_post[i, j] += v_post[i, j] * dt
-    
+
+
+    # Final position updates
     x_ball[0] += dt * v_ball[0]
     for i in ti.grouped(x_net):
         v_net[i] *= ti.exp(-net_drag_damping * dt)
-        x_net[i] += v_net[i] * dt
-    for i in ti.grouped(x_rope):
-        x_rope[i] += v_rope[i] * dt    
+        x_net[i] += v_net[i] * dt 
 
 
 @ti.kernel
@@ -243,7 +257,7 @@ while window.running:
 
     update_vertices()
 
-    camera.position(7.5, 2, 30) #20, 10, 40
+    camera.position(20, 10, 30) #20, 10, 40
     camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 
@@ -261,14 +275,14 @@ while window.running:
                indices=net_indices,
                per_vertex_color=net_colors,
                two_sided=True)
-    scene.particles(x_ball, radius=ball_radius * 0.95, color=(1, 0, 0))
-    scene.particles(shakle_vertices_hor_1, radius=0.05, color=(0, 0, 1))
-    scene.particles(shakle_vertices_hor_2, radius=0.05, color=(0, 0, 1))
-    scene.particles(shakle_vertices_hor_3, radius=0.05, color=(0, 0, 1))
-    scene.particles(shakle_vertices_ver_1, radius=0.05, color=(0, 0, 1))
-    scene.particles(shakle_vertices_ver_2, radius=0.05, color=(0, 0, 1))
-    scene.lines(rope_vertices, color=(0, 1, 0), width=2)
-    scene.lines(post_vertices, color=(1, 1, 1), width=5)
+    scene.particles(x_ball, radius=ball_radius * 0.95, color=(0.8, 0, 0))
+    scene.particles(shakle_vertices_hor_1, radius=0.05, color=(0, 0.2, 1))
+    scene.particles(shakle_vertices_hor_2, radius=0.05, color=(0, 0.2, 1))
+    scene.particles(shakle_vertices_hor_3, radius=0.05, color=(0, 0.2, 1))
+    scene.particles(shakle_vertices_ver_1, radius=0.05, color=(0, 0.2, 1))
+    scene.particles(shakle_vertices_ver_2, radius=0.05, color=(0, 0.2, 1))
+    scene.lines(rope_vertices, color=(0.8, 0.8, 0.8), width=2)
+    scene.lines(post_vertices, color=(0.3, 0.3, 0.3), width=5)
     
     canvas.scene(scene)
     window.show()

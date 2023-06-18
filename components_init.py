@@ -24,14 +24,17 @@ def init_rope_bearing_low():
     for i in ti.ndrange((num_elements_lb_angled)):
         x_rope[rid, i] = start_pos + (i * 0.1 * direction_angled_up.normalized())
         v_rope[rid, i] = ti.Vector([0, 0, 0])
+        m_rope[rid, i] = rope_node_mass
     offset = num_elements_lb_angled
     for i in ti.ndrange((num_elements_lb_horizontal)):
         x_rope[rid, offset + i] = ti.Vector([0.0, 0.0, f]) + (i * 0.1 * direction_horizontal.normalized())
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
+        m_rope[rid, offset + i] = rope_node_mass
     offset += num_elements_lb_horizontal
     for i in ti.ndrange((num_elements_lb_angled)):
         x_rope[rid, offset + i] = ti.Vector([(net_width * 3), 0.0, f]) + (i * 0.1 * direction_angled_down.normalized())
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
+        m_rope[rid, offset + i] = rope_node_mass
 
 # upper bearing rope
 length_ub_horizontal = net_width * 3
@@ -49,14 +52,17 @@ def init_rope_bearing_up():
     for i in ti.ndrange((num_elements_ub_angled)):
         x_rope[rid, i] = start_pos + (i * 0.1 * direction_angled_up.normalized())
         v_rope[rid, i] = ti.Vector([0, 0, 0])
+        m_rope[rid, i] = rope_node_mass
     offset = num_elements_ub_angled
     for i in ti.ndrange((num_elements_ub_horizontal)):
         x_rope[rid, offset + i] = ti.Vector([0.0, 0.0, (L + f)]) + (i * 0.1 * direction_horizontal.normalized())
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
+        m_rope[rid, offset + i] = rope_node_mass
     offset += num_elements_ub_horizontal
     for i in ti.ndrange((num_elements_ub_angled)):
         x_rope[rid, offset + i] = ti.Vector([(net_width * 3), 0.0, (L + f)]) + (i * 0.1 * direction_angled_down.normalized())
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
+        m_rope[rid, offset + i] = rope_node_mass
 
 # upslope ropes
 length_upslope = ti.sqrt((a/2 - 0)**2 + (h - 0)**2 + (0 - (L + f))**2)
@@ -72,10 +78,12 @@ def init_rope_upslope():
         for i in ti.ndrange(num_elements_upslope):
             x_rope[2 + j, i] = start_pos + ti.Vector([j * net_width, 0.0, 0.0]) + (i * 0.1) * direction_right.normalized()
             v_rope[2 + j, i] = ti.Vector([0, 0, 0])
+            m_rope[2 + j, i] = rope_node_mass
     for v in ti.ndrange(ropes_per_side):
         for w in ti.ndrange(num_elements_upslope):
             x_rope[6 + v, w] = start_pos + ti.Vector([v * net_width, 0.0, 0.0]) + (w * 0.1) * direction_left.normalized()
             v_rope[6 + v, w] = ti.Vector([0, 0, 0])
+            m_rope[6 + v, w] = rope_node_mass
 
 # lateral support ropes
 length_support = ti.sqrt(b**2 + (L + f)**2)
@@ -86,16 +94,17 @@ def init_rope_support_lat():
     rid = 10
     shift = 0.25
     start_pos_up = ti.Vector([-b + shift, 0.0, 0.0])
-    start_pos_down = ti.Vector([(net_width * 3), 0.0, (L + f)])
+    start_pos_down = ti.Vector([(net_width * 3 + b - shift), 0.0, 0.0])
     direction_up = ti.Vector([b - shift, 0, (L + f)])
-    direction_down = ti.Vector([b - shift, 0, -(L + f)])
+    direction_down = ti.Vector([net_width * 3 - (net_width * 3 + b - shift), 0, (L + f)])
     for i in ti.ndrange((num_elements_support)):
         x_rope[rid, i] = start_pos_up + (i * 0.1 * direction_up.normalized())
         v_rope[rid, i] = ti.Vector([0, 0, 0])
-    offset = num_elements_support
-    for i in ti.ndrange((num_elements_support)):
-        x_rope[rid, offset + i] = start_pos_down + (i * 0.1 * direction_down.normalized())
-        v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
+        m_rope[rid, i] = rope_node_mass
+    for j in ti.ndrange((num_elements_support)):
+        x_rope[rid + 1, j] = start_pos_down + (j * 0.1 * direction_down.normalized())
+        v_rope[rid + 1, j] = ti.Vector([0, 0, 0])
+        m_rope[rid + 1, j] = rope_node_mass
 
 
 # Nets

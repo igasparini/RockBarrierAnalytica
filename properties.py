@@ -21,11 +21,11 @@ beta = math.atan((a/2) / np.sqrt((h - L * np.sin(epsilon))**2 + (L * np.cos(epsi
 delta = math.atan(L / b)
 
 # Ropes
-rope_node_mass = 0.1
+rope_node_mass = 1
 max_ropes = 14  # maximum number of ropes
 max_elements = 300  # assuming a maximum length of 30m for ropes
-rope_spring = 1e6
-rope_damper = 1
+rope_spring = 4e4
+rope_damper = 3e3
 
 # Nets
 net_nodes_width = 107 #107
