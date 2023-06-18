@@ -268,7 +268,7 @@ while window.running:
 
     update_vertices()
 
-    camera.position(20, 10, 30) #20, 10, 40
+    camera.position(7.5, 25, 15) #20, 10, 40
     camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 
