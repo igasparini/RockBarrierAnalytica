@@ -169,7 +169,7 @@ def substep():
             continue
         force = ti.Vector([0.0, 0.0, 0.0])
         v_rope[rid, i] += gravity * dt
-        d = 0.01  # rope rest length, < 0.1 is pre-tention
+        d = 0.07  # rope rest length, < 0.1 is pre-tension
 
         # spring force with the previous node in the rope
         if i > 0: 
@@ -198,10 +198,18 @@ def substep():
             if 0 <= rid <= 1:
                 v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
             if 2 <= rid < 10:
-                post_id = (rid - 2) // 2
-                #v_post[post_id, 1] -= force / m_post[post_id, 1]
+                post_id = 0
+                if rid == 2 or rid == 6:
+                    post_id = 0
+                elif rid == 3 or rid == 7:
+                    post_id = 1
+                elif rid == 4 or rid == 8:
+                    post_id = 2
+                elif rid == 5 or rid == 9:
+                    post_id = 3
                 if i == 0:
-                    #v_post[post_id, 1] -= force / m_post[post_id, 1]
+                    force_direction = (x_post[post_id, 1] - x_rope[rid, i]).normalized()
+                    v_post[post_id, 1] -= (force/10000) * force_direction / m_post[post_id, 1]
                     v_rope[rid, i] = v_post[post_id, 1]
                 if m_rope[rid, i + 1] == 0.0:
                     v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
@@ -210,7 +218,7 @@ def substep():
                     v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
                 post_id = (rid - 10) * 3
                 if m_rope[rid, i + 1] == 0.0:
-                    v_rope[rid, i] = v_post[post_id, 1]
+                    x_rope[rid, i] = x_post[post_id, 1]
             continue
 
     # Posts
@@ -218,9 +226,12 @@ def substep():
         if j == 1:
             d = (x_post[i, 0] - x_post[i, j]).normalized()  # Direction towards the pivot
             displacement = (x_post[i, 0] - x_post[i, j]).norm() - net_height
-            force = post_spring * displacement * d
-            v_post[i, j] += force * dt / m_post[i, j]
+            spring_force = post_spring * displacement * d
+            damping_force = -post_damper * d.dot(v_post[i, j]) * d 
+            total_force = spring_force + damping_force
+            v_post[i, j] += total_force * dt / m_post[i, j]
             x_post[i, j] += v_post[i, j] * dt
+            x_post[i, j].x = i * net_width
 
 
     # Final position updates

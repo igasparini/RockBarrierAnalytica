@@ -24,8 +24,8 @@ delta = math.atan(L / b)
 rope_node_mass = 1
 max_ropes = 14  # maximum number of ropes
 max_elements = 300  # assuming a maximum length of 30m for ropes
-rope_spring = 4e4
-rope_damper = 3e3
+rope_spring = 4e5 # 4e4
+rope_damper = 3e3 # 3e3
 
 # Nets
 net_nodes_width = 107 #107
@@ -51,7 +51,7 @@ shackle_node_mass = 1
 # Posts
 post_node_mass = 50
 post_spring = 1e8
-post_damper = 1
+post_damper = 1e4
 
 # Ball
 ball_radius = 0.5
