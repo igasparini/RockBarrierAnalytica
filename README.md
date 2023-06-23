@@ -1,2 +1,2 @@
 ﻿# RockBarrierAnalytica
-Flexible rockfall barrier impact simulation in Taichi Lang.
+Hybrid DEM/FEM explicit simulation of an impact on a flexible rockfall barrier in Taichi Lang.
