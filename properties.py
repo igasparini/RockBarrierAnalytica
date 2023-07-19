@@ -49,7 +49,7 @@ shackle_damp_sj = 1e2
 shackle_node_mass = 1
 
 # Posts
-post_node_mass = 50
+post_node_mass = 100 #50
 post_spring = 1e8
 post_damper = 1e4
 

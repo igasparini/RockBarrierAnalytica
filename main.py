@@ -178,7 +178,7 @@ def substep():
             length_direction = length / length_norm if length_norm != 0 else 0
             velocity_difference = v_rope[rid, i] - v_rope[rid, i - 1]
             damping_force = -rope_damper * velocity_difference
-            spring_force = -rope_spring * abs(length_norm - d) * length_direction
+            spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d)
             force += spring_force + damping_force
 
         # spring force with the next node in the rope
@@ -188,7 +188,7 @@ def substep():
             length_direction = length / length_norm if length_norm != 0 else 0
             velocity_difference = v_rope[rid, i] - v_rope[rid, i + 1]
             damping_force = -rope_damper * velocity_difference
-            spring_force = -rope_spring * abs(length_norm - d) * length_direction
+            spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d)
             force += spring_force + damping_force
 
         v_rope[rid, i] += dt * force / m_rope[rid, i]
