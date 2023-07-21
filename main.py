@@ -73,44 +73,22 @@ init_points()
 #     return projected_pos
 
 @ti.func
-def force(rid, i):
+def calculate_forces(rid, i, direction):
+    force = ti.Vector([0.0, 0.0, 0.0])
+    d = 0.08  # rope rest length, < 0.1 is pre-tension
+    index = i + 1 if direction == 1 else i - 1
 
-  force = ti.Vector([0.0, 0.0, 0.0])
-
-  # Spring force from previous segment
-  if i > 0:
-    prev_length = x_rope[rid, i] - x_rope[rid, i-1] 
-    prev_norm = prev_length.norm()
-    prev_dir = prev_length / prev_norm
-
-    k = rope_spring
-    if 2 <= rid <= 9:
-       k = rope_spring * (prev_norm - 0.095)  # No pre-tension
-    else:
-       k = rope_spring * (prev_norm - d)
-
-    force -= k * prev_dir
-  
-  # Spring force to next segment
-  if i < max_elements-1:
-   
-    next_length = x_rope[rid, i+1] - x_rope[rid, i]
-    next_norm = next_length.norm()  
-    next_dir = next_length / next_norm
-
-    k = rope_spring 
-    if 2 <= rid <= 9:
-       k = rope_spring * (next_norm - 0.095) # No pre-tension
-    else:
-       k = rope_spring * (next_norm - d)
-
-    force -= k * next_dir
-
-  # Damping force 
-  velocity = v_rope[rid, i]
-  force -= rope_damper * velocity
-
-  return force
+    if (direction == 0 and i > 0) or (direction == 1 and i < max_elements - 1 and m_rope[rid, index] != 0.0):
+        length = x_rope[rid, i] - x_rope[rid, index]
+        length_norm = length.norm()
+        length_direction = length / length_norm if length_norm != 0 else 0
+        velocity_difference = v_rope[rid, i] - v_rope[rid, index]
+        damping_force = -rope_damper * velocity_difference
+        spring_force = -rope_spring * (length_norm - d) * length_direction 
+        if 2 <= rid <= 9:
+            spring_force = -rope_spring * (length_norm - 0.095) * length_direction # no pre-tension for upslope ropes
+        force += spring_force + damping_force
+    return force
 
 # step function
 @ti.kernel
@@ -204,64 +182,32 @@ def substep():
         x_shackle_ver[n, i] = middle_point
 
     # Ropes
-    x_rope_prev = x_rope.copy()
-    v_rope_prev = v_rope.copy()
-    a_rope_prev = a_rope.copy()
-
-    for rid, i in x_rope:
-        if i == 0 or (i < max_elements - 1 and m_rope[rid, i + 1] != 0.0):
-            continue # Skip pinned ends
-        
-        # Verlet position update
-        x_rope[rid,i] = 2*x_rope[rid,i] - x_prev[rid,i] + (v_prev[rid,i] * dt) + (0.5 * a[rid,i] * dt**2)
-
-        # Compute forces and acceleration
-        a[rid,i] = force(rid, i) / m
-
-        # Update velocities
-        v_rope[rid,i] = v_prev[rid,i] + 0.5*(a[rid,i] + a_prev[rid,i])*dt 
-
-        # Copy for next step
-        x_prev = x_rope.copy() 
-        v_prev = v_rope.copy()
-
-
-
     for rid, i in x_rope:
         if m_rope[rid, i] == 0:  # Skip uninitialized elements
             continue
-        force = ti.Vector([0.0, 0.0, 0.0])
-        #v_rope[rid, i] += gravity * dt
-        d = 0.08  # rope rest length, < 0.1 is pre-tension
 
-        # spring force with the previous node in the rope
-        if i > 0: 
-            length = x_rope[rid, i] - x_rope[rid, i - 1]
-            length_norm = length.norm()
-            length_direction = length / length_norm if length_norm != 0 else 0
-            velocity_difference = v_rope[rid, i] - v_rope[rid, i - 1]
-            damping_force = -rope_damper * velocity_difference
-            spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d) -> with abs, the rope doesn't have compression
-            if 2 <= rid <= 9:
-                spring_force = -rope_spring * (length_norm - 0.095) * length_direction # no pre-tension for upslope ropes
-            force += spring_force + damping_force
+        # Spring force with the previous node in the rope
+        force_previous = calculate_forces(rid, i, 0) # 0 is direction = previous
 
-        # spring force with the next node in the rope
-        if i < max_elements - 1 and m_rope[rid, i + 1] != 0.0:
-            length = x_rope[rid, i] - x_rope[rid, i + 1]
-            length_norm = length.norm()
-            length_direction = length / length_norm if length_norm != 0 else 0
-            velocity_difference = v_rope[rid, i] - v_rope[rid, i + 1]
-            damping_force = -rope_damper * velocity_difference
-            spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d)
-            if 2 <= rid <= 9:
-                spring_force = -rope_spring * (length_norm - 0.095) * length_direction # no pre-tension for upslope ropes
-            force += spring_force + damping_force
+        # Spring force with the next node in the rope
+        force_next = calculate_forces(rid, i, 1) # 1 is direction = previous
+
+        force = force_previous + force_next
 
         if i != 0 or (i < max_elements - 1 and m_rope[rid, i + 1] != 0.0):
-            v_rope[rid, i] += gravity * dt
-            v_rope[rid, i] += dt * force / m_rope[rid, i]
+            a_rope[rid, i] = gravity + force / m_rope[rid, i]
+            # First half-step for velocity
+            v_rope[rid, i] += 0.5 * dt * a_rope[rid, i]
             x_rope[rid, i] += dt * v_rope[rid, i]
+
+            # Recalculate forces here based on the new positions
+            force_previous = calculate_forces(rid, i, 0)
+            force_next = calculate_forces(rid, i, 1)
+            force = force_previous + force_next
+
+            a_rope[rid, i] = gravity + force / m_rope[rid, i]
+            # Second half-step for velocity
+            v_rope[rid, i] += 0.5 * dt * a_rope[rid, i]
 
         if rid == 0:
             if i == 0 or m_rope[rid, i + 1] == 0.0:
@@ -271,7 +217,58 @@ def substep():
             if i == 0 or m_rope[rid, i + 1] == 0.0:
                 v_rope[rid, i] = [0.0, 0.0, 0.0]
 
+
+
+
+
+    # for rid, i in x_rope:
+    #     if m_rope[rid, i] == 0:  # Skip uninitialized elements
+    #         continue
+    #     force = ti.Vector([0.0, 0.0, 0.0])
+    #     #v_rope[rid, i] += gravity * dt
+    #     d = 0.08  # rope rest length, < 0.1 is pre-tension
+
+    #     # spring force with the previous node in the rope
+    #     if i > 0: 
+    #         length = x_rope[rid, i] - x_rope[rid, i - 1]
+    #         length_norm = length.norm()
+    #         length_direction = length / length_norm if length_norm != 0 else 0
+    #         velocity_difference = v_rope[rid, i] - v_rope[rid, i - 1]
+    #         damping_force = -rope_damper * velocity_difference
+    #         spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d) -> with abs, the rope doesn't have compression
+    #         if 2 <= rid <= 9:
+    #             spring_force = -rope_spring * (length_norm - 0.095) * length_direction # no pre-tension for upslope ropes
+    #         force += spring_force + damping_force
+
+    #     # spring force with the next node in the rope
+    #     if i < max_elements - 1 and m_rope[rid, i + 1] != 0.0:
+    #         length = x_rope[rid, i] - x_rope[rid, i + 1]
+    #         length_norm = length.norm()
+    #         length_direction = length / length_norm if length_norm != 0 else 0
+    #         velocity_difference = v_rope[rid, i] - v_rope[rid, i + 1]
+    #         damping_force = -rope_damper * velocity_difference
+    #         spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d)
+    #         if 2 <= rid <= 9:
+    #             spring_force = -rope_spring * (length_norm - 0.095) * length_direction # no pre-tension for upslope ropes
+    #         force += spring_force + damping_force
+
+    #     if i != 0 or (i < max_elements - 1 and m_rope[rid, i + 1] != 0.0):
+    #         v_rope[rid, i] += gravity * dt
+    #         v_rope[rid, i] += dt * force / m_rope[rid, i]
+    #         x_rope[rid, i] += dt * v_rope[rid, i]
+
+    #     if rid == 0:
+    #         if i == 0 or m_rope[rid, i + 1] == 0.0:
+    #             v_rope[rid, i] = [0.0, 0.0, 0.0]
+
+    #     if rid == 1:
+    #         if i == 0 or m_rope[rid, i + 1] == 0.0:
+    #             v_rope[rid, i] = [0.0, 0.0, 0.0]
+
         
+
+
+
 
         # if i == 0 or (i < max_elements - 1 and m_rope[rid, i + 1] == 0.0):
         #     if 0 <= rid <= 1:
@@ -299,6 +296,9 @@ def substep():
         #         if m_rope[rid, i + 1] == 0.0:
         #             x_rope[rid, i] = x_post[post_id, 1]
         #     continue
+
+
+
 
     # Posts
     for i, j in x_post:
