@@ -24,7 +24,7 @@ delta = math.atan(L / b)
 rope_node_mass = 1
 max_ropes = 14  # maximum number of ropes
 max_elements = 300  # assuming a maximum length of 30m for ropes
-rope_spring = 4e5 # 4e4
+rope_spring = 8e5 # 4e5
 rope_damper = 3e3 # 3e3
 
 # Nets

@@ -72,6 +72,46 @@ init_points()
 
 #     return projected_pos
 
+@ti.func
+def force(rid, i):
+
+  force = ti.Vector([0.0, 0.0, 0.0])
+
+  # Spring force from previous segment
+  if i > 0:
+    prev_length = x_rope[rid, i] - x_rope[rid, i-1] 
+    prev_norm = prev_length.norm()
+    prev_dir = prev_length / prev_norm
+
+    k = rope_spring
+    if 2 <= rid <= 9:
+       k = rope_spring * (prev_norm - 0.095)  # No pre-tension
+    else:
+       k = rope_spring * (prev_norm - d)
+
+    force -= k * prev_dir
+  
+  # Spring force to next segment
+  if i < max_elements-1:
+   
+    next_length = x_rope[rid, i+1] - x_rope[rid, i]
+    next_norm = next_length.norm()  
+    next_dir = next_length / next_norm
+
+    k = rope_spring 
+    if 2 <= rid <= 9:
+       k = rope_spring * (next_norm - 0.095) # No pre-tension
+    else:
+       k = rope_spring * (next_norm - d)
+
+    force -= k * next_dir
+
+  # Damping force 
+  velocity = v_rope[rid, i]
+  force -= rope_damper * velocity
+
+  return force
+
 # step function
 @ti.kernel
 def substep():
@@ -164,12 +204,35 @@ def substep():
         x_shackle_ver[n, i] = middle_point
 
     # Ropes
+    x_rope_prev = x_rope.copy()
+    v_rope_prev = v_rope.copy()
+    a_rope_prev = a_rope.copy()
+
+    for rid, i in x_rope:
+        if i == 0 or (i < max_elements - 1 and m_rope[rid, i + 1] != 0.0):
+            continue # Skip pinned ends
+        
+        # Verlet position update
+        x_rope[rid,i] = 2*x_rope[rid,i] - x_prev[rid,i] + (v_prev[rid,i] * dt) + (0.5 * a[rid,i] * dt**2)
+
+        # Compute forces and acceleration
+        a[rid,i] = force(rid, i) / m
+
+        # Update velocities
+        v_rope[rid,i] = v_prev[rid,i] + 0.5*(a[rid,i] + a_prev[rid,i])*dt 
+
+        # Copy for next step
+        x_prev = x_rope.copy() 
+        v_prev = v_rope.copy()
+
+
+
     for rid, i in x_rope:
         if m_rope[rid, i] == 0:  # Skip uninitialized elements
             continue
         force = ti.Vector([0.0, 0.0, 0.0])
-        v_rope[rid, i] += gravity * dt
-        d = 0.07  # rope rest length, < 0.1 is pre-tension
+        #v_rope[rid, i] += gravity * dt
+        d = 0.08  # rope rest length, < 0.1 is pre-tension
 
         # spring force with the previous node in the rope
         if i > 0: 
@@ -178,7 +241,9 @@ def substep():
             length_direction = length / length_norm if length_norm != 0 else 0
             velocity_difference = v_rope[rid, i] - v_rope[rid, i - 1]
             damping_force = -rope_damper * velocity_difference
-            spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d)
+            spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d) -> with abs, the rope doesn't have compression
+            if 2 <= rid <= 9:
+                spring_force = -rope_spring * (length_norm - 0.095) * length_direction # no pre-tension for upslope ropes
             force += spring_force + damping_force
 
         # spring force with the next node in the rope
@@ -189,37 +254,51 @@ def substep():
             velocity_difference = v_rope[rid, i] - v_rope[rid, i + 1]
             damping_force = -rope_damper * velocity_difference
             spring_force = -rope_spring * (length_norm - d) * length_direction #abs(length_norm - d)
+            if 2 <= rid <= 9:
+                spring_force = -rope_spring * (length_norm - 0.095) * length_direction # no pre-tension for upslope ropes
             force += spring_force + damping_force
 
-        v_rope[rid, i] += dt * force / m_rope[rid, i]
-        x_rope[rid, i] += dt * v_rope[rid, i]
+        if i != 0 or (i < max_elements - 1 and m_rope[rid, i + 1] != 0.0):
+            v_rope[rid, i] += gravity * dt
+            v_rope[rid, i] += dt * force / m_rope[rid, i]
+            x_rope[rid, i] += dt * v_rope[rid, i]
 
-        if i == 0 or (i < max_elements - 1 and m_rope[rid, i + 1] == 0.0):
-            if 0 <= rid <= 1:
-                v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
-            if 2 <= rid < 10:
-                post_id = 0
-                if rid == 2 or rid == 6:
-                    post_id = 0
-                elif rid == 3 or rid == 7:
-                    post_id = 1
-                elif rid == 4 or rid == 8:
-                    post_id = 2
-                elif rid == 5 or rid == 9:
-                    post_id = 3
-                if i == 0:
-                    force_direction = (x_post[post_id, 1] - x_rope[rid, i]).normalized()
-                    v_post[post_id, 1] -= (force/10000) * force_direction / m_post[post_id, 1]
-                    v_rope[rid, i] = v_post[post_id, 1]
-                if m_rope[rid, i + 1] == 0.0:
-                    v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
-            if rid >= 10:
-                if i == 0:
-                    v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
-                post_id = (rid - 10) * 3
-                if m_rope[rid, i + 1] == 0.0:
-                    x_rope[rid, i] = x_post[post_id, 1]
-            continue
+        if rid == 0:
+            if i == 0 or m_rope[rid, i + 1] == 0.0:
+                v_rope[rid, i] = [0.0, 0.0, 0.0]
+
+        if rid == 1:
+            if i == 0 or m_rope[rid, i + 1] == 0.0:
+                v_rope[rid, i] = [0.0, 0.0, 0.0]
+
+        
+
+        # if i == 0 or (i < max_elements - 1 and m_rope[rid, i + 1] == 0.0):
+        #     if 0 <= rid <= 1:
+        #         v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+        #     if 2 <= rid < 10:
+        #         post_id = 0
+        #         if rid == 2 or rid == 6:
+        #             post_id = 0
+        #         elif rid == 3 or rid == 7:
+        #             post_id = 1
+        #         elif rid == 4 or rid == 8:
+        #             post_id = 2
+        #         elif rid == 5 or rid == 9:
+        #             post_id = 3
+        #         if i == 0:
+        #             force_direction = (x_post[post_id, 1] - x_rope[rid, i]).normalized()
+        #             v_post[post_id, 1] -= (force/10000) * force_direction / m_post[post_id, 1]
+        #             v_rope[rid, i] = v_post[post_id, 1]
+        #         if m_rope[rid, i + 1] == 0.0:
+        #             v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+        #     if rid >= 10:
+        #         if i == 0:
+        #             v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+        #         post_id = (rid - 10) * 3
+        #         if m_rope[rid, i + 1] == 0.0:
+        #             x_rope[rid, i] = x_post[post_id, 1]
+        #     continue
 
     # Posts
     for i, j in x_post:
@@ -231,7 +310,7 @@ def substep():
             total_force = spring_force + damping_force
             v_post[i, j] += total_force * dt / m_post[i, j]
             x_post[i, j] += v_post[i, j] * dt
-            x_post[i, j].x = i * net_width
+            #x_post[i, j].x = i * net_width
 
 
     # Final position updates
@@ -268,7 +347,7 @@ while window.running:
 
     update_vertices()
 
-    camera.position(7.5, 25, 15) #20, 10, 40
+    camera.position(7.5, 15, 35) #20, 10, 40
     camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 
