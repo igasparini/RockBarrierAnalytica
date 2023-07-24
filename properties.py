@@ -25,7 +25,8 @@ rope_node_mass = 1
 max_ropes = 14  # maximum number of ropes
 max_elements = 300  # assuming a maximum length of 30m for ropes
 rope_spring = 8e5 # 4e5
-rope_damper = 3e3 # 3e3
+rope_damper = 1e4 # 3e3
+shift = 0.25 # shift between bearing ropes and support ropes
 
 # Nets
 net_nodes_width = 107 #107

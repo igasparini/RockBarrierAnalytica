@@ -101,7 +101,6 @@ num_elements_support = round(length_support * 10)
 @ti.func
 def init_rope_support_lat():
     rid = 10
-    shift = 0.25
     start_pos_up = ti.Vector([-b + shift, 0.0, 0.0])
     start_pos_down = ti.Vector([(net_width * 3 + b - shift), 0.0, 0.0])
     direction_up = ti.Vector([b - shift, 0, (L + f)])
