@@ -26,51 +26,6 @@ def init_points():
 
 init_points()
 
-# @ti.func
-# def find_segment_for_projection(node_position, current_position, rope_nodes, friction_coefficient, rope_id):
-#     # Initialize with current segment
-#     start_node = int(current_position)
-#     end_node = start_node + 1
-#     direction = (rope_nodes[rope_id, end_node] - rope_nodes[rope_id, start_node]).normalized()
-#     relative_pos = node_position - rope_nodes[rope_id, start_node]
-#     projected_pos = relative_pos.dot(direction) * direction + rope_nodes[rope_id, start_node]
-
-#     # While the projected position is not in the current segment
-#     while not (rope_nodes[rope_id, start_node] <= projected_pos <= rope_nodes[rope_id, end_node]):
-#         # Calculate the force required to move the shackle to the next segment
-#         distance_to_next_segment = ti.sqrt((rope_nodes[rope_id, end_node] - projected_pos).norm_sqr())
-#         force_required = distance_to_next_segment * friction_coefficient
-
-#         # If the net node's force is not enough to overcome the friction, break
-#         if force_required > 1: #net_node_force: 
-#             break
-
-#         # Update to the next segment
-#         start_node = end_node
-#         end_node += 1
-#         direction = (rope_nodes[rope_id, end_node] - rope_nodes[rope_id, start_node]).normalized()
-#         projected_pos = relative_pos.dot(direction) * direction + rope_nodes[rope_id, start_node]
-
-#     return start_node, end_node
-
-# @ti.func
-# def project_to_rope(n, i, j, rid, rope_x, net_x):
-#     current_position = x_shackle_hor[n, i, j]
-#     if j == 0:
-#         start_node, end_node = find_segment_for_projection(net_x[n, i * shackle_interval, j], current_position, rope_x, shackle_friction_coefficient, rid)
-#     else:
-#         start_node, end_node = find_segment_for_projection(net_x[n, i * shackle_interval, j * (net_nodes_height - 1)], current_position, rope_x, shackle_friction_coefficient, rid)
-#     direction = (rope_x[rid, end_node] - rope_x[rid, start_node]).normalized()
-#     if j == 0:
-#         relative_pos = net_x[n, i * shackle_interval, j] - rope_x[rid, start_node]
-#     else:
-#         relative_pos = net_x[n, i * shackle_interval, j * (net_nodes_height - 1)] - rope_x[rid, start_node]
-#     projected_pos = relative_pos.dot(direction) * direction + rope_x[rid, start_node]
-
-#     # Update the current position of the shackle on the rope
-#     x_shackle_hor[n, i, j] = start_node + projected_pos  # Assuming nodes are equally spaced
-
-#     return projected_pos
 
 @ti.func
 def calculate_force_ropes(rid, i, direction):
@@ -91,7 +46,8 @@ def calculate_force_ropes(rid, i, direction):
         force += spring_force + damping_force
     return force
 
-# step function
+
+# Step function
 @ti.kernel
 def substep():
 
@@ -271,6 +227,44 @@ def substep():
             x_post[i, j] += v_post[i, j] * dt
             #x_post[i, j].x = i * net_width
 
+
+    # Posts - Ropes sliding interaction
+    for pid, i in lb_distances:
+        lb_distances[pid, i] = (x_rope[0, i] - x_post[pid, 0]).norm()
+        ub_distances[pid, i] = (x_rope[1, i] - x_post[pid, 1]).norm()
+        # Check if the rope node is within threshold distance to the post the post
+        if lb_distances[pid, i] <= 0.1:
+            # # Check if the rope node is moving towards the post
+            # if (v_rope[0, i].dot(x_post[pid, 0] - x_rope[0, i]) > 0):
+
+            shift = x_post[pid, 0] - x_rope[0, i]
+            x_rope[0, i] = x_post[pid, 0]
+            velocity_correction = shift / dt
+            lerp_factor = 0.1  # Linear interpolation factor
+            v_rope[0, i] = (1 - lerp_factor) * v_rope[0, i] + lerp_factor * velocity_correction
+
+        # Check if the rope node is within threshold distance to the post the post
+        if ub_distances[pid, i] <= 0.1:
+            # # Check if the rope node is moving towards the post
+            # if (v_rope[1, i].dot(x_post[pid, 1] - x_rope[1, i]) > 0):
+
+            shift = x_post[pid, 1] - x_rope[1, i]
+            x_rope[1, i] = x_post[pid, 1]
+            velocity_correction = shift / dt
+            lerp_factor = 0.1  # Linear interpolation factor
+            v_rope[1, i] = (1 - lerp_factor) * v_rope[1, i] + lerp_factor * velocity_correction
+
+                
+                # # Calculate the projection of the rope tension force on the post
+                # tension_force = force_previous + force_next  # Assuming these are the forces you calculated earlier
+                # post_direction = (x_post[closest_post_id, 0] - x_post[closest_post_id, 1]).normalized()
+                # force_on_post = tension_force.dot(post_direction)
+
+    
+    # Ropes - Shackles sliding interaction
+
+
+
     # Final position updates
     x_ball[0] += dt * v_ball[0]
     for i in ti.grouped(x_net):
@@ -305,7 +299,7 @@ while window.running:
 
     update_vertices()
 
-    camera.position(7.5, 15, 35) #20, 10, 40 #7.5, 15, 35 #30, 5, 5
+    camera.position(7.5, 15, 30) #20, 10, 40 #7.5, 15, 35 #30, 5, 5
     camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 

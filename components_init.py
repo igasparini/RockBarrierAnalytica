@@ -3,17 +3,21 @@ from math import pi
 
 from properties import *
 
-# Ropes
+##### Ropes
 x_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
 v_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
 a_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
 m_rope = ti.field(dtype=ti.f32, shape=(max_ropes, max_elements))
 
-# lower bearing rope
+### Lower bearing rope
 length_lb_horizontal = net_width * 3
 length_lb_angled = ti.sqrt(b**2 + f**2)
 num_elements_lb_horizontal = round(length_lb_horizontal * 10)
 num_elements_lb_angled = round(length_lb_angled * 10)
+num_elements_lb_total = num_elements_lb_horizontal + num_elements_lb_angled * 2
+
+# distances to posts
+lb_distances = ti.field(dtype=ti.f32, shape=(4, num_elements_lb_total))
 
 @ti.func
 def init_rope_bearing_low():
@@ -39,12 +43,18 @@ def init_rope_bearing_low():
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
         a_rope[rid, offset + i] = ti.Vector([0, 0, 0])
         m_rope[rid, offset + i] = rope_node_mass
+    for i, j in lb_distances:
+        lb_distances[i, j] = 0
 
-# upper bearing rope
+### Upper bearing rope
 length_ub_horizontal = net_width * 3
 length_ub_angled = ti.sqrt(b**2 + (L + f)**2)
 num_elements_ub_horizontal = round(length_ub_horizontal * 10)
 num_elements_ub_angled = round(length_ub_angled * 10)
+num_elements_ub_total = num_elements_ub_horizontal + num_elements_ub_angled * 2
+
+# distances to posts
+ub_distances = ti.field(dtype=ti.f32, shape=(4, num_elements_ub_total))
 
 @ti.func
 def init_rope_bearing_up():
@@ -70,8 +80,10 @@ def init_rope_bearing_up():
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
         a_rope[rid, offset + i] = ti.Vector([0, 0, 0])
         m_rope[rid, offset + i] = rope_node_mass
+    for i, j in ub_distances:
+        ub_distances[i, j] = 0
 
-# upslope ropes
+### Upslope ropes
 length_upslope = ti.sqrt((a/2 - 0)**2 + (h - 0)**2 + (0 - (L + f))**2)
 num_elements_upslope = round(length_upslope * 10)
 ropes_per_side = 4
@@ -94,7 +106,7 @@ def init_rope_upslope():
             a_rope[6 + v, w] = ti.Vector([0, 0, 0])
             m_rope[6 + v, w] = rope_node_mass
 
-# lateral support ropes
+### Lateral support ropes
 length_support = ti.sqrt(b**2 + (L + f)**2)
 num_elements_support = round(length_support * 10)
 
@@ -117,7 +129,7 @@ def init_rope_support_lat():
         m_rope[rid + 1, j] = rope_node_mass
 
 
-# Nets
+##### Nets
 net_quad_size_width = net_width / net_nodes_width
 net_quad_size_height = net_height / net_nodes_height
 
@@ -148,7 +160,7 @@ else:
                 spring_offsets.append(ti.Vector([0, i, j]))
 
 
-# Shackles
+##### Shackles
 x_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
 v_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
 m_shackle_hor = ti.field(dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
@@ -175,7 +187,7 @@ def init_shackles():
         v_shackle_ver[n, i] = [0, 0, 0]    
 
 
-# Posts
+##### Posts
 x_post = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets + 1, 2))
 v_post = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets + 1, 2))
 m_post = ti.field(dtype=ti.f32, shape=(n_nets + 1, 2))
@@ -190,7 +202,7 @@ def init_posts():
         x_post[n, i] = [x, y, z]
         v_post[n, i] = [0, 0, 0]
 
-# Ball
+##### Ball
 x_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))
 v_ball = ti.Vector.field(3, dtype=ti.f32, shape=(1, ))
 m_ball = ti.field(dtype=ti.f32, shape=())
