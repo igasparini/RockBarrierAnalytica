@@ -8,8 +8,8 @@ from components_init import *
 from rendering import *
 
 # Simulation parameters
-dt = 1e-2 / max(net_nodes_width, net_nodes_height) #8e-3
-substeps = int(1 / 200 // dt) #1/120
+dt = 1e-2 / max(net_nodes_width, net_nodes_height) #8e-3 #1e-2
+substeps = int(1 / 200 // dt) #1/120 #1/200
 
 init_mesh_indices()
 
@@ -86,8 +86,8 @@ def calculate_force_ropes(rid, i, direction):
         velocity_difference = v_rope[rid, i] - v_rope[rid, index]
         damping_force = -rope_damper * velocity_difference
         spring_force = -rope_spring * (length_norm - d) * length_direction 
-        if 2 <= rid <= 9:
-            spring_force = -rope_spring * (length_norm - 0.095) * length_direction # almost no pre-tension for upslope ropes
+        if 2 <= rid <= 11:
+            spring_force = -rope_spring * (length_norm - 0.095) * length_direction # almost no pre-tension for upslope and lateral ropes
         force += spring_force + damping_force
     return force
 
@@ -186,28 +186,25 @@ def substep():
     for rid, i in x_rope:
         if m_rope[rid, i] == 0:  # Skip uninitialized elements
             continue
-
+        
+        # Velocity Verlet
         force_previous = calculate_force_ropes(rid, i, 0) # 0 is direction = previous
         force_next = calculate_force_ropes(rid, i, 1) # 1 is direction = next
+        force1 = force_previous + force_next
 
-        force = force_previous + force_next
+        a_rope[rid, i] = gravity + force1 / m_rope[rid, i]
+        # First half-step for velocity
+        v_rope[rid, i] += 0.5 * dt * a_rope[rid, i]
+        x_rope[rid, i] += dt * v_rope[rid, i]
+        # Recalculate forces here based on the new positions
+        force_previous = calculate_force_ropes(rid, i, 0)
+        force_next = calculate_force_ropes(rid, i, 1)
+        force2 = force_previous + force_next
+        a_rope[rid, i] = gravity + force2 / m_rope[rid, i]
+        # Second half-step for velocity
+        v_rope[rid, i] += 0.5 * dt * a_rope[rid, i]
 
-        if i != 0 or (i < max_elements - 1 and m_rope[rid, i + 1] != 0.0):
-            a_rope[rid, i] = gravity + force / m_rope[rid, i]
-            # First half-step for velocity
-            v_rope[rid, i] += 0.5 * dt * a_rope[rid, i]
-            x_rope[rid, i] += dt * v_rope[rid, i]
-
-            # Recalculate forces here based on the new positions
-            force_previous = calculate_force_ropes(rid, i, 0)
-            force_next = calculate_force_ropes(rid, i, 1)
-            force = force_previous + force_next
-
-            a_rope[rid, i] = gravity + force / m_rope[rid, i]
-            # Second half-step for velocity
-            v_rope[rid, i] += 0.5 * dt * a_rope[rid, i]
-
-        if i == 0 or (i < max_elements - 1 and m_rope[rid, i + 1] == 0.0):
+        if i == 0 or (m_rope[rid, i + 1] == 0.0):
             if 0 <= rid <= 1: # Upper and lower bearing ropes
                 a_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
                 v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
@@ -218,11 +215,19 @@ def substep():
             if 2 <= rid < 10: # Upslope ropes
                 post_id = (rid - 2) % 4 # Simplified calculation of post_id
                 if i == 0:
-                    force_direction = (x_post[post_id, 1] - x_rope[rid, i]).normalized()
-                    impulse = force * force_direction * dt
-                    v_post[post_id, 1] -= impulse / m_post[post_id, 1]
+                    force = ti.Vector([0.0, 0.0, 0.0])
+                    length = x_post[post_id, 1] - x_rope[rid, i]
+                    length_norm = length.norm()
+                    length_direction = length / length_norm if length_norm != 0 else 0
+                    velocity_difference = v_post[post_id, 1] - v_rope[rid, i]
+                    damping_force = -rope_damper * velocity_difference
+                    spring_force = -rope_spring * length_norm * length_direction
+                    force += spring_force + damping_force
+
+                    v_post[post_id, 1] += force * dt / m_post[post_id, 1]
                     v_rope[rid, i] = v_post[post_id, 1]
                     x_rope[rid, i] = x_post[post_id, 1]
+
                 if m_rope[rid, i + 1] == 0.0:
                     a_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
                     v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
@@ -240,25 +245,31 @@ def substep():
                     if rid == 11:
                         x_rope[rid, i] = ti.Vector([net_width * 3 + b - shift, 0.0, 0.0])
                 if m_rope[rid, i + 1] == 0.0:
-                    force_direction = (x_post[post_id, 1] - x_rope[rid, i]).normalized()
-                    impulse = (force) * force_direction * dt
-                    v_post[post_id, 1] -= impulse / m_post[post_id, 1]
+                    force = ti.Vector([0.0, 0.0, 0.0])
+                    length = x_post[post_id, 1] - x_rope[rid, i]
+                    length_norm = length.norm()
+                    length_direction = length / length_norm if length_norm != 0 else 0
+                    velocity_difference = v_post[post_id, 1] - v_rope[rid, i]
+                    damping_force = -rope_damper * velocity_difference
+                    spring_force = -rope_spring * length_norm * length_direction
+                    force += spring_force + damping_force
+
+                    v_post[post_id, 1] += force * dt / m_post[post_id, 1]
                     v_rope[rid, i] = v_post[post_id, 1]
                     x_rope[rid, i] = x_post[post_id, 1]
 
 
     # Posts
     for i, j in x_post:
-        if j == 1:
-            d = (x_post[i, 0] - x_post[i, j]).normalized()  # Direction towards the pivot
+        if j == 1: 
+            direction = (x_post[i, 0] - x_post[i, j]).normalized()  # Direction towards the pivot
             displacement = (x_post[i, 0] - x_post[i, j]).norm() - net_height
-            spring_force = post_spring * displacement * d
-            damping_force = -post_damper * d.dot(v_post[i, j]) * d 
+            spring_force = post_spring * displacement * direction
+            damping_force = -post_damper * direction.dot(v_post[i, j]) * direction
             total_force = spring_force + damping_force
             v_post[i, j] += total_force * dt / m_post[i, j]
             x_post[i, j] += v_post[i, j] * dt
             #x_post[i, j].x = i * net_width
-
 
     # Final position updates
     x_ball[0] += dt * v_ball[0]
@@ -294,7 +305,7 @@ while window.running:
 
     update_vertices()
 
-    camera.position(7.5, 15, 35) #20, 10, 40
+    camera.position(7.5, 15, 35) #20, 10, 40 #7.5, 15, 35 #30, 5, 5
     camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 

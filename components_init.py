@@ -101,17 +101,17 @@ num_elements_support = round(length_support * 10)
 @ti.func
 def init_rope_support_lat():
     rid = 10
-    start_pos_up = ti.Vector([-b + shift, 0.0, 0.0])
-    start_pos_down = ti.Vector([(net_width * 3 + b - shift), 0.0, 0.0])
-    direction_up = ti.Vector([b - shift, 0, (L + f)])
-    direction_down = ti.Vector([net_width * 3 - (net_width * 3 + b - shift), 0, (L + f)])
+    start_pos_left = ti.Vector([-b + shift, 0.0, 0.0])
+    start_pos_right = ti.Vector([(net_width * 3 + b - shift), 0.0, 0.0])
+    direction_left = ti.Vector([b - shift, 0, (L + f)])
+    direction_right = ti.Vector([net_width * 3 - (net_width * 3 + b - shift), 0, (L + f)])
     for i in ti.ndrange((num_elements_support)):
-        x_rope[rid, i] = start_pos_up + (i * 0.1 * direction_up.normalized())
+        x_rope[rid, i] = start_pos_left + (i * 0.1 * direction_left.normalized())
         v_rope[rid, i] = ti.Vector([0, 0, 0])
         a_rope[rid, i] = ti.Vector([0, 0, 0])
         m_rope[rid, i] = rope_node_mass
     for j in ti.ndrange((num_elements_support)):
-        x_rope[rid + 1, j] = start_pos_down + (j * 0.1 * direction_down.normalized())
+        x_rope[rid + 1, j] = start_pos_right + (j * 0.1 * direction_right.normalized())
         v_rope[rid + 1, j] = ti.Vector([0, 0, 0])
         a_rope[rid + 1, j] = ti.Vector([0, 0, 0])
         m_rope[rid + 1, j] = rope_node_mass
