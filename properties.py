@@ -3,6 +3,7 @@ import numpy as np
 import math
 
 gravity = ti.Vector([0.0, -9.81, 0.0])
+air_friction = 0.002 #0.002
 
 # General geometries of the net ('Grundlagen zur Qualitätsbeurteilung', S. 22-23)
 net_width = 5 # 5m
@@ -21,11 +22,12 @@ beta = math.atan((a/2) / np.sqrt((h - L * np.sin(epsilon))**2 + (L * np.cos(epsi
 delta = math.atan(L / b)
 
 # Ropes
+rope_node_length = 0.1
 rope_node_mass = 1
 max_ropes = 14  # maximum number of ropes
 max_elements = 300  # assuming a maximum length of 30m for ropes
 rope_spring = 8e5 # 4e5
-rope_damper = 1e4 # 3e3 1e4
+rope_damper = 1e4 # 3e3 1e4 1.05e4
 shift = 0.25 # shift between bearing ropes and support ropes
 
 # Nets
@@ -43,10 +45,8 @@ shackle_interval = 5  # create a shackle every 5 net nodes
 num_shackles_hor = (net_nodes_width + shackle_interval - 1) // shackle_interval
 num_shackles_ver = (net_nodes_height + shackle_interval - 1) // shackle_interval
 shackle_friction_coefficient = 0.85
-shackle_spring_pj = 1e6 # pin joint
-shackle_damp_pj = 1e3
-shackle_spring_sj = 1e6 # 1e4 sliding joint
-shackle_damp_sj = 1e2
+shackle_spring = 1e6
+shackle_damp = 1e4
 shackle_node_mass = 1
 
 # Posts

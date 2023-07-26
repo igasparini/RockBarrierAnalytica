@@ -17,7 +17,10 @@ num_elements_lb_angled = round(length_lb_angled * 10)
 num_elements_lb_total = num_elements_lb_horizontal + num_elements_lb_angled * 2
 
 # distances to posts
-lb_distances = ti.field(dtype=ti.f32, shape=(4, num_elements_lb_total))
+lb_post_distances = ti.field(dtype=ti.f32, shape=(4, num_elements_lb_total))
+
+# distances to shackles
+lb_shackle_distances = ti.Vector.field(1, dtype=ti.f32, shape=(n_nets, num_shackles_hor, num_elements_lb_total))
 
 @ti.func
 def init_rope_bearing_low():
@@ -43,8 +46,10 @@ def init_rope_bearing_low():
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
         a_rope[rid, offset + i] = ti.Vector([0, 0, 0])
         m_rope[rid, offset + i] = rope_node_mass
-    for i, j in lb_distances:
-        lb_distances[i, j] = 0
+    for i, j in lb_post_distances:
+        lb_post_distances[i, j] = 0
+    for I in ti.grouped(lb_shackle_distances):
+        lb_shackle_distances[I] = 0
 
 ### Upper bearing rope
 length_ub_horizontal = net_width * 3
@@ -54,7 +59,10 @@ num_elements_ub_angled = round(length_ub_angled * 10)
 num_elements_ub_total = num_elements_ub_horizontal + num_elements_ub_angled * 2
 
 # distances to posts
-ub_distances = ti.field(dtype=ti.f32, shape=(4, num_elements_ub_total))
+ub_post_distances = ti.field(dtype=ti.f32, shape=(4, num_elements_ub_total))
+
+# distances to shackles
+ub_shackle_distances = ti.Vector.field(1, dtype=ti.f32, shape=(n_nets, num_shackles_hor, num_elements_ub_total))
 
 @ti.func
 def init_rope_bearing_up():
@@ -80,12 +88,14 @@ def init_rope_bearing_up():
         v_rope[rid, offset + i] = ti.Vector([0, 0, 0])
         a_rope[rid, offset + i] = ti.Vector([0, 0, 0])
         m_rope[rid, offset + i] = rope_node_mass
-    for i, j in ub_distances:
-        ub_distances[i, j] = 0
+    for i, j in ub_post_distances:
+        ub_post_distances[i, j] = 0
+    for I in ti.grouped(ub_shackle_distances):
+        ub_shackle_distances[I] = 0
 
 ### Upslope ropes
 length_upslope = ti.sqrt((a/2 - 0)**2 + (h - 0)**2 + (0 - (L + f))**2)
-num_elements_upslope = round(length_upslope * 10)
+num_elements_upslope = round(length_upslope * 1/rope_node_length)
 ropes_per_side = 4
 
 @ti.func
@@ -95,13 +105,13 @@ def init_rope_upslope():
     direction_left = ti.Vector([-a/2, h, -(L + f)])
     for j in ti.ndrange(ropes_per_side):
         for i in ti.ndrange(num_elements_upslope):
-            x_rope[2 + j, i] = start_pos + ti.Vector([j * net_width, 0.0, 0.0]) + (i * 0.1) * direction_right.normalized()
+            x_rope[2 + j, i] = start_pos + ti.Vector([j * net_width, 0.0, 0.0]) + (i * rope_node_length) * direction_right.normalized()
             v_rope[2 + j, i] = ti.Vector([0, 0, 0])
             a_rope[2 + j, i] = ti.Vector([0, 0, 0])
             m_rope[2 + j, i] = rope_node_mass
     for v in ti.ndrange(ropes_per_side):
         for w in ti.ndrange(num_elements_upslope):
-            x_rope[6 + v, w] = start_pos + ti.Vector([v * net_width, 0.0, 0.0]) + (w * 0.1) * direction_left.normalized()
+            x_rope[6 + v, w] = start_pos + ti.Vector([v * net_width, 0.0, 0.0]) + (w * rope_node_length) * direction_left.normalized()
             v_rope[6 + v, w] = ti.Vector([0, 0, 0])
             a_rope[6 + v, w] = ti.Vector([0, 0, 0])
             m_rope[6 + v, w] = rope_node_mass

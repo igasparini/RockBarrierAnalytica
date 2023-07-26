@@ -1,7 +1,7 @@
 import taichi as ti
 
 from properties import *
-from components_init import x_net, x_shackle_hor, x_shackle_ver, x_rope, x_post
+from components_barrier import x_net, x_shackle_hor, x_shackle_ver, x_rope, x_post
 
 # Nets rendering
 net_num_triangles = int((net_nodes_width - 1) * (net_nodes_height - 1) * 2)
