@@ -278,7 +278,7 @@ def substep():
             shift = x_rope[0, i] - x_shackle_hor[n, sid, 0]
             x_shackle_hor[n, sid, 0] = x_rope[0, i]
             velocity_correction = shift / dt
-            lerp_factor = 0.5  # Linear interpolation factor
+            lerp_factor = 0.7  # Linear interpolation factor
             v_shackle_hor[n, sid, 0] = (1 - lerp_factor) * v_shackle_hor[n, sid, 0] + lerp_factor * velocity_correction
 
     for n, sid, i in ub_shackle_distances:
@@ -287,7 +287,7 @@ def substep():
             shift = x_rope[1, i] - x_shackle_hor[n, sid, 1]
             x_shackle_hor[n, sid, 1] = x_rope[1, i]
             velocity_correction = shift / dt
-            lerp_factor = 0.5  # Linear interpolation factor
+            lerp_factor = 0.7  # Linear interpolation factor
             v_shackle_hor[n, sid, 1] = (1 - lerp_factor) * v_shackle_hor[n, sid, 1] + lerp_factor * velocity_correction
 
 
@@ -325,7 +325,7 @@ while window.running:
 
     update_vertices()
 
-    camera.position(7.5, 25, 15) #20, 10, 40 #7.5, 15, 35 #30, 5, 5
+    camera.position(7.5, 15, 25) #20, 10, 40 #7.5, 15, 35 #30, 5, 5
     camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
     scene.set_camera(camera)
 
