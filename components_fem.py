@@ -27,6 +27,29 @@ def fem_spring_damper(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
     return force
 
 @ti.func
+def fem_spring_damper_1D(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
+    """
+    Models a simple spring/damper system and returns the force.
+
+    eq_ength = equilibrium length of the spring
+
+    """
+    displacement = x1 - x2
+    displacement_norm = displacement.norm()
+    displacement_direction = displacement / displacement_norm if displacement_norm != 0 else 0
+    velocity_difference = v1 - v2
+
+    if eq_length == -1:
+        eq_length = 0
+
+    spring_force = -spring_const * (displacement_norm - eq_length) * displacement_direction
+    #damping_force = -damper_const * velocity_difference # 1D damping
+    damping_force = -damper_const * velocity_difference.dot(displacement_direction) * displacement_direction #* min(net_quad_size_width, net_quad_size_height) # dashpot damping
+
+    force = spring_force + damping_force
+    return force
+
+@ti.func
 def fem_spring_damper_yielding(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1, yield_force=0):
     """
     Models a spring/damper system that allows yelding of the spring and returns the force.

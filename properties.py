@@ -45,8 +45,8 @@ shackle_interval = 5  # create a shackle every 5 net nodes
 num_shackles_hor = (net_nodes_width + shackle_interval - 1) // shackle_interval
 num_shackles_ver = (net_nodes_height + shackle_interval - 1) // shackle_interval
 shackle_friction_coefficient = 0.85
-shackle_spring = 1e6
-shackle_damp = 1e4
+shackle_spring = 100#1e6
+shackle_damp = 0.2#1e4
 shackle_node_mass = 1
 
 # Posts
