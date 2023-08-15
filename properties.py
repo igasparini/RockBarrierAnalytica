@@ -26,7 +26,7 @@ rope_node_length = 0.1
 rope_node_mass = 1
 max_ropes = 14  # maximum number of ropes
 max_elements = 300  # assuming a maximum length of 30m for ropes
-rope_spring = 8e5 # 4e5
+rope_spring = 8e5 # 4e5 8e5
 rope_damper = 1e4 # 3e3 1e4 1.05e4
 shift = 0.25 # shift between bearing ropes and support ropes
 
@@ -45,8 +45,8 @@ shackle_interval = 5  # create a shackle every 5 net nodes
 num_shackles_hor = (net_nodes_width + shackle_interval - 1) // shackle_interval
 num_shackles_ver = (net_nodes_height + shackle_interval - 1) // shackle_interval
 shackle_friction_coefficient = 0.85
-shackle_spring = 100#1e6
-shackle_damp = 0.2#1e4
+shackle_spring = 1e6
+shackle_damp = 1e4
 shackle_node_mass = 1
 
 # Posts

@@ -12,7 +12,7 @@ from rendering import *
 # dt = 1.00e-2 / max(net_nodes_width, net_nodes_height) #8e-3 #1e-2 #1.01e-2
 # substeps = int(1 / 200 // dt) #1/120 #1/200
 dt = 5e-5
-substeps = 200
+substeps = 50 #200
 
 init_mesh_indices()
 
@@ -54,6 +54,44 @@ def calculate_force_ropes(rid, i, direction):
 
 min_indices = ti.field(dtype=ti.i32, shape=(3, num_shackles_hor))
 
+# Find the rope segment the shackle is attached to
+shackle_hor_rope_lb = ti.Vector.field(1, dtype=ti.int64, shape=(n_nets, num_shackles_hor))
+
+# @ti.kernel
+# def shackle_rope_segment():
+#     for n, sid, i in lb_shackle_distances:
+#         current_distance = (x_rope[0, i] - x_shackle_hor[n, sid, 0]).norm()
+#         lb_shackle_distances[n, sid, i] = current_distance
+#         min_val = current_distance
+
+#         if 0 < i < num_elements_lb_total:  # Ensure valid rope segments
+#             # Determine orthogonal projection for both segments attached to the current node
+#             dir_i1 = x_rope[0, i+1] - x_rope[0, i]
+#             dir_i2 = x_rope[0, i] - x_rope[0, i-1]
+            
+#             proj_onto_i1 = (dir_i1.normalized().dot(x_shackle_hor[n, sid, 0] - x_rope[0, i])) * dir_i1.normalized()
+#             proj_onto_i2 = (dir_i2.normalized().dot(x_shackle_hor[n, sid, 0] - x_rope[0, i-1])) * dir_i2.normalized()
+
+#             proj_point_i1 = x_rope[0, i] + proj_onto_i1
+#             proj_point_i2 = x_rope[0, i-1] + proj_onto_i2
+
+#             dist_i1 = (proj_point_i1 - x_shackle_hor[n, sid, 0]).norm()
+#             dist_i2 = (proj_point_i2 - x_shackle_hor[n, sid, 0]).norm()
+
+#             # Check if one of these projected distances is a new minimum
+#             if dist_i1 < min_val:
+#                 min_val = dist_i1
+#                 shackle_hor_rope_lb[n, sid] = i  # This segment is defined by nodes i and i+1
+                
+#             if dist_i2 < min_val:
+#                 min_val = dist_i2
+#                 shackle_hor_rope_lb[n, sid] = i-1  # This segment is defined by nodes i-1 and i
+
+@ti.kernel
+def shackle_rope_segment():
+    index_shift = num_elements_lb_horizontal // (num_shackles_hor * 3)
+    for n, sid in shackle_hor_rope_lb:
+        shackle_hor_rope_lb[n, sid] = num_elements_lb_angled + sid * index_shift + 2 * n * num_shackles_hor
 
 # Step function
 @ti.kernel
@@ -125,16 +163,27 @@ def substep():
 
     # Impulse for horizontal shackles
     for n, i, j in v_shackle_hor:
+        force = ti.Vector([0.0, 0.0, 0.0])
         net_node = ti.Vector([n, i * shackle_interval, j * (net_nodes_height - 1)])
-        displacement = x_shackle_hor[n, i, j] - x_net[net_node]
-        correction = displacement / 2 
+        # displacement = x_shackle_hor[n, i, j] - x_net[net_node]
+        # correction = displacement / 2 
 
-        impulse = correction * dt
-        v_net[net_node] += impulse / m_net[net_node]
-        v_shackle_hor[n, i, j] -= impulse / m_shackle_hor[n, i, j]
+        # impulse = correction * dt
+        # v_net[net_node] += impulse / m_net[net_node]
+        # v_shackle_hor[n, i, j] -= impulse / m_shackle_hor[n, i, j]
 
-        x_net[net_node] += correction
-        x_shackle_hor[n, i, j] -= correction
+        # x_net[net_node] += correction
+        # x_shackle_hor[n, i, j] -= correction
+
+        force = fem_spring_damper(x_shackle_hor[n, i, j], 
+                                    x_net[net_node], 
+                                    v_shackle_hor[n, i, j], 
+                                    v_net[net_node], 
+                                    shackle_spring, 
+                                    shackle_damp, 
+                                    -1)
+        v_net[net_node] -= force * dt / m_net[net_node]
+        v_shackle_hor[n, i, j] += force * dt / m_shackle_hor[n, i, j]
 
     # Impulse for vertical shackles
     for n, i in v_shackle_ver:
@@ -274,82 +323,158 @@ def substep():
                 # post_direction = (x_post[closest_post_id, 0] - x_post[closest_post_id, 1]).normalized()
                 # force_on_post = tension_force.dot(post_direction)
 
+
     # Ropes - Shackles sliding interaction
-    for n, sid, i in lb_shackle_distances:
-        current_distance = (x_rope[0, i] - x_shackle_hor[n, sid, 0]).norm()
-        lb_shackle_distances[n, sid, i] = current_distance
-        min_val = 0.1
+    for n, sid in shackle_hor_rope_lb:
+        i = shackle_hor_rope_lb[n, sid]
+        i_val = int(i[0])
 
-        # Check if the current distance is a new minimum
-        if current_distance < min_val:
-            min_val = current_distance
-            min_indices[n, sid] = i
+        current_velocity = v_shackle_hor[n, sid, 0]
+        remaining_distance = current_velocity.norm() * dt
+        final_position = x_shackle_hor[n, sid, 0]
 
-    # Impulse for shackles-rope interaction
-    for n, sid in min_indices:
-        # This section computes the orthogonal projection and identifies the closer and farther nodes as explained previously
-        closest_i = min_indices[n, sid]
-        impulse_point = ti.Vector([0.0, 0.0, 0.0])
-        closer_node = 0
-        farther_node = 0
-        
-        if 0 < closest_i < num_elements_lb_total:
-            dir_i1 = x_rope[0, closest_i+1] - x_rope[0, closest_i]
-            dir_i2 = x_rope[0, closest_i] - x_rope[0, closest_i-1]
+        while remaining_distance > 0:
+            # Compute possible movement directions along the rope
+            dir_i1 = (x_rope[0, i_val+1] - x_rope[0, i_val]).normalized()
+            dir_i2 = (x_rope[0, i_val] - x_rope[0, i_val+1]).normalized()
 
-            proj_onto_i1 = (dir_i1.normalized().dot(x_shackle_hor[n, sid, 0] - x_rope[0, closest_i])) * dir_i1.normalized()
-            proj_onto_i2 = (dir_i2.normalized().dot(x_shackle_hor[n, sid, 0] - x_rope[0, closest_i-1])) * dir_i2.normalized()
+            proj_dir_i1 = current_velocity.dot(dir_i1)
+            proj_dir_i2 = current_velocity.dot(dir_i2)
+            proj_dir = 0.0
+            segment_length = 0.0
+            dir = ti.Vector([0.0, 0.0, 0.0])
 
-            proj_point_i1 = x_rope[0, closest_i] + proj_onto_i1
-            proj_point_i2 = x_rope[0, closest_i-1] + proj_onto_i2
+            if proj_dir_i1 > proj_dir_i2:
+                dir = dir_i1
+                proj_dir = proj_dir_i1
+                segment_length = (x_rope[0, i_val+1] - x_rope[0, i_val]).norm()
+            elif proj_dir_i2 > proj_dir_i1:
+                dir = dir_i2
+                proj_dir = proj_dir_i2
+                segment_length = (x_rope[0, i_val] - x_rope[0, i_val+1]).norm()
 
-            dist_i1 = (proj_point_i1 - x_shackle_hor[n, sid, 0]).norm()
-            dist_i2 = (proj_point_i2 - x_shackle_hor[n, sid, 0]).norm()
+            # Friction
+            friction_force = -shackle_friction_coefficient * current_velocity
+            friction_acceleration = friction_force / m_shackle_hor[n, sid, 0]
+            current_velocity += friction_acceleration * dt
+            if current_velocity.norm() < 1e-6:  # Avoiding the shackle from moving back due to very low velocities
+                break
 
-            if dist_i1 < dist_i2:
-                closer_node = closest_i
-                farther_node = closest_i + 1
-                impulse_point = proj_point_i1
+            # Compute how far the shackle would move in this iteration
+            proj_distance = proj_dir * dt
+            if proj_distance <= segment_length:
+                final_position += dir * proj_distance
+                #remaining_distance -= proj_distance
+                remaining_distance = 0
+                shackle_hor_rope_lb[n, sid] = i_val
+
+                x_shackle_hor[n, sid, 0] = final_position
+                v_shackle_hor[n, sid, 0] = current_velocity
+                
+                # Spring/damper
+                force = fem_spring_damper(x_shackle_hor[n, sid, 0], 
+                                            x_rope[0, i_val], 
+                                            v_shackle_hor[n, sid, 0], 
+                                            v_rope[0, i_val], 
+                                            shackle_spring, 
+                                            shackle_damp, 
+                                            -1)
+                # v_shackle_hor[n, sid, 0] += force * dt / m_shackle_hor[n, sid, 0]
+                # v_rope[0, i_val] -= force * dt / m_rope[0, i_val]
+
+                # x_shackle_hor[n, sid, 0] += v_shackle_hor[n, sid, 0] * dt
+                # x_rope[0, i_val] += v_rope[0, i_val] * dt
+                #x_shackle_hor[n, sid, 0] = v_shackle_hor[n, sid, 0] * dt
+
+                # # Impulse
+                # displacement = x_shackle_hor[n, sid, 0] - x_rope[0, i_val]
+                # correction = displacement / 2
+                # impulse = correction * dt
+                
+                # v_rope[0, i_val] += impulse / m_rope[0, i_val]
+                # v_shackle_hor[n, sid, 0] -= impulse / m_shackle_hor[n, sid, 0] 
+
+                # x_rope[0, i_val] += correction
+                # x_shackle_hor[n, sid, 0] -= correction
+
+                break
             else:
-                closer_node = closest_i - 1
-                farther_node = closest_i
-                impulse_point = proj_point_i2
+                final_position += dir * segment_length
+                remaining_distance -= segment_length
 
-        # Calculate displacement and correction
-        displacement = x_shackle_hor[n, sid, 0] - impulse_point
-        correction = displacement / 2
-
-        # Apply impulse proportional to the distance of the nodes to the projected point
-        distance_closer = (x_rope[0, closer_node] - impulse_point).norm()
-        distance_farther = (x_rope[0, farther_node] - impulse_point).norm()
-
-        impulse_closer = correction * (distance_farther / (distance_closer + distance_farther))
-        impulse_farther = correction - impulse_closer
-
-        v_rope[0, closer_node] += impulse_closer / m_rope[0, closer_node]
-        v_rope[0, farther_node] += impulse_farther / m_rope[0, farther_node]
-        v_shackle_hor[n, sid, 0] -= correction / m_shackle_hor[n, sid, 0]
-
-        x_rope[0, closer_node] += impulse_closer
-        x_rope[0, farther_node] += impulse_farther
-        x_shackle_hor[n, sid, 0] -= correction
+                i_val += 1
+                if i_val >= num_elements_lb_total - 1:
+                    break
 
 
+    # for n, sid, i in lb_shackle_distances:
+    #     current_distance = (x_rope[0, i] - x_shackle_hor[n, sid, 0]).norm()
+    #     lb_shackle_distances[n, sid, i] = current_distance
+    #     min_val = 0.1
+
+    #     # Check if the current distance is a new minimum
+    #     if current_distance < min_val:
+    #         min_val = current_distance
+    #         min_indices[n, sid] = i
+
+    # for n, sid in min_indices:
+    #     # Initial setup
+    #     closest_i = min_indices[n, sid]
+    #     impulse_point = ti.Vector([0.0, 0.0, 0.0])
+    #     closer_node = 0
+    #     farther_node = 0
+        
+    #     if 0 < closest_i < num_elements_lb_total:
+    #         # Determine orthogonal projection
+    #         dir_i1 = x_rope[0, closest_i+1] - x_rope[0, closest_i]
+    #         dir_i2 = x_rope[0, closest_i] - x_rope[0, closest_i-1]
+            
+    #         proj_onto_i1 = (dir_i1.normalized().dot(x_shackle_hor[n, sid, 0] - x_rope[0, closest_i])) * dir_i1.normalized()
+    #         proj_onto_i2 = (dir_i2.normalized().dot(x_shackle_hor[n, sid, 0] - x_rope[0, closest_i-1])) * dir_i2.normalized()
+
+    #         proj_point_i1 = x_rope[0, closest_i] + proj_onto_i1
+    #         proj_point_i2 = x_rope[0, closest_i-1] + proj_onto_i2
+
+    #         dist_i1 = (proj_point_i1 - x_shackle_hor[n, sid, 0]).norm()
+    #         dist_i2 = (proj_point_i2 - x_shackle_hor[n, sid, 0]).norm()
+            
+    #         if dist_i1 < dist_i2:
+    #             closer_node = closest_i
+    #             farther_node = closest_i + 1
+    #             impulse_point = proj_point_i1
+    #         else:
+    #             closer_node = closest_i - 1
+    #             farther_node = closest_i
+    #             impulse_point = proj_point_i2
+
+    #         # Calculate displacement and correction
+    #         displacement = x_shackle_hor[n, sid, 0] - impulse_point
+    #         correction = displacement / 2
+
+    #         # Apply impulse proportional to the distance of the nodes to the projected point
+    #         distance_closer = (x_rope[0, closer_node] - impulse_point).norm()
+    #         distance_farther = (x_rope[0, farther_node] - impulse_point).norm()
+
+    #         impulse_closer = correction * (distance_farther / (distance_closer + distance_farther))
+    #         impulse_farther = correction - impulse_closer
+
+    #         v_rope[0, closer_node] += impulse_closer / m_rope[0, closer_node] * dt
+    #         v_rope[0, farther_node] += impulse_farther / m_rope[0, farther_node] * dt
+    #         v_shackle_hor[n, sid, 0] -= correction / m_shackle_hor[n, sid, 0] * dt
+
+    #         x_rope[0, closer_node] += impulse_closer
+    #         x_rope[0, farther_node] += impulse_farther
+    #         x_shackle_hor[n, sid, 0] -= correction
+
+    #         # Calculate the direction of the rope segment and the sliding velocity in that direction
+    #         rope_segment_direction = (x_rope[0, farther_node] - x_rope[0, closer_node]).normalized()
+    #         sliding_velocity = v_shackle_hor[n, sid, 0].dot(rope_segment_direction) * rope_segment_direction
+    #         sliding_velocity = sliding_velocity * shackle_friction_coefficient
 
 
 
-            # # Get the distances to the neighboring nodes, with checks to ensure valid indices
-            # distance_prev = (x_rope[0, i-1] - x_shackle_hor[n, sid, 0]).norm() if i > 0 else float('inf')
-            # distance_next = (x_rope[0, i+1] - x_shackle_hor[n, sid, 0]).norm() if i < max_elements-1 else float('inf')
 
-            # # Determine which node is closer
-            # closest_node_index = i-1 if distance_prev < distance_next else i+1
 
-    #         shift = x_rope[0, i] - x_shackle_hor[n, sid, 0]
-    #         x_shackle_hor[n, sid, 0] = x_rope[0, i]
-    #         velocity_correction = shift / dt
-    #         lerp_factor = 0.7  # Linear interpolation factor
-    #         v_shackle_hor[n, sid, 0] = (1 - lerp_factor) * v_shackle_hor[n, sid, 0] + lerp_factor * velocity_correction
 
     # # Impulse for horizontal shackles
     # for n, i, j in v_shackle_hor:
@@ -412,7 +537,7 @@ def substep():
     #         v_shackle_hor[n, sid, j] = ti.Vector([0.0, 0.0, 0.0])
 
     #     # Subtract orthogonal velocity due to friction
-    #     friction_force = -shackle_friction_coefficient * orthogonal_velocity
+    #     friction_force = -shackle_shackle_friction_coefficient * orthogonal_velocity
     #     v_shackle_hor[n, sid, j] += friction_force / m_shackle_hor[n, sid, j]
 
     # Final position updates
@@ -428,6 +553,8 @@ def update_vertices():
     update_shackle_vertices()
     update_rope_vertices()
     update_post_vertices()
+
+shackle_rope_segment()
 
 # Scene rendering
 window = ti.ui.Window("RockBarrierAnalytica Simulation on GGUI", (1024, 1024), vsync=True)
