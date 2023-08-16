@@ -126,23 +126,25 @@ def substep():
                                                     original_dist, 
                                                     net_spring_yield)
 
-        n = i[0]
-        shackle_i = i[1] // shackle_interval
-        shackle_j = i[2] // (net_nodes_height - 1)
-        if 0 <= shackle_i < (net_nodes_width - 1) // shackle_interval and (shackle_j == 0 or shackle_j == 1):
-            v_net[i] += (f_net[i] + f_shackle_hor[n, shackle_i, shackle_j]) * dt / m_net[i]
-        else:
-            v_net[i] += f_net[i] * dt / m_net[i]
+        # n = i[0]
+        # shackle_i = i[1] // shackle_interval
+        # shackle_j = i[2] // (net_nodes_height - 1)
+        # if 0 <= shackle_i < (net_nodes_width - 1) // shackle_interval and (shackle_j == 0 or shackle_j == 1):
+        #     v_net[i] += (f_net[i] + f_shackle_hor[n, shackle_i, shackle_j]) * dt / m_net[i]
+        # else:
+        #     v_net[i] += f_net[i] * dt / m_net[i]
+        
+        v_net[i] += f_net[i] * dt / m_net[i]
 
-    # Impulse for horizontal shackles
-    for n, i, j in v_shackle_hor:
-        net_node = ti.Vector([n, i * shackle_interval, j * (net_nodes_height - 1)])
-        f_shackle_hor[n, i, j] += f_net[net_node]
-        # v_shackle_hor[n, i, j] += f_shackle_hor[n, i, j] * dt / m_shackle_hor[n, i, j]
-        # x_shackle_hor[n, i, j] += v_shackle_hor[n, i, j] * dt
+    # # Impulse for horizontal shackles
+    # for n, i, j in x_shackle_hor:
+    #     net_node = ti.Vector([n, i * shackle_interval, j * (net_nodes_height - 1)])
+    #     f_shackle_hor[n, i, j] += f_net[net_node]
+    #     v_shackle_hor[n, i, j] += f_shackle_hor[n, i, j] * dt / shackle_node_mass
+    #     # x_shackle_hor[n, i, j] += v_shackle_hor[n, i, j] * dt
 
     # Impulse for vertical shackles
-    for n, i in v_shackle_ver:
+    for n, i in x_shackle_ver:
         net_node_1 = ti.Vector([n, net_nodes_width - 1, i * shackle_interval])
         net_node_2 = ti.Vector([n + 1, 0, i * shackle_interval])
         middle_point = (x_net[net_node_1] + x_net[net_node_2]) / 2
@@ -164,8 +166,8 @@ def substep():
         i = connections_shackle_hor_rope[rid, n, sid]
         i_val = int(i[0])
 
-        f_shackle_hor[n, sid, rid] += f_rope[rid, i_val]
-        v_shackle_hor[n, sid, rid] += f_shackle_hor[n, sid, rid] * dt / shackle_node_mass
+        # f_shackle_hor[n, sid, rid] += f_rope[rid, i_val]
+        # v_shackle_hor[n, sid, rid] += f_shackle_hor[n, sid, rid] * dt / shackle_node_mass
 
         current_velocity = v_shackle_hor[n, sid, rid]
         remaining_distance = current_velocity.norm() * dt
@@ -225,16 +227,16 @@ def substep():
         if m_rope[rid, i] == 0:  # Skip uninitialized elements
             continue
         
-        if rid == 0 or rid == 1:
-            if connections_rope_shackle_hor[rid, i][0] == 99:
-                f_rope[rid, i] = 0
-            else:
-                f_rope[rid, i] += f_shackle_hor[connections_rope_shackle_hor[rid, i][0], connections_rope_shackle_hor[rid, i][1], 0]
+        # if rid == 0 or rid == 1:
+        #     if connections_rope_shackle_hor[rid, i][0] == 99:
+        #         f_rope[rid, i] = 0
+        #     else:
+        #         f_rope[rid, i] += f_shackle_hor[connections_rope_shackle_hor[rid, i][0], connections_rope_shackle_hor[rid, i][1], 0]
 
         # Euler
         force_previous = calculate_force_ropes(rid, i, 0) # 0 is direction = previous
         force_next = calculate_force_ropes(rid, i, 1) # 1 is direction = next
-        force = force_previous + force_next + f_rope[rid, i]
+        force = force_previous + force_next #+ f_rope[rid, i]
 
         v_rope[rid, i] += force / m_rope[rid, i] * dt
         x_rope[rid, i] += v_rope[rid, i] * dt
@@ -325,38 +327,69 @@ def substep():
             #x_post[i, j].x = i * net_width
 
 
-    # Posts - Ropes sliding interaction
-    for pid, i in lb_post_distances:
-        lb_post_distances[pid, i] = (x_rope[0, i] - x_post[pid, 0]).norm()
-        # Check if the rope node is within threshold distance to the post the post
-        if lb_post_distances[pid, i] <= 0.1:
-            # # Check if the rope node is moving towards the post
-            # if (v_rope[0, i].dot(x_post[pid, 0] - x_rope[0, i]) > 0):
+    # # Posts - Ropes sliding interaction
+    # for pid, i in lb_post_distances:
+    #     lb_post_distances[pid, i] = (x_rope[0, i] - x_post[pid, 0]).norm()
+    #     # Check if the rope node is within threshold distance to the post the post
+    #     if lb_post_distances[pid, i] <= 0.1:
+    #         # # Check if the rope node is moving towards the post
+    #         # if (v_rope[0, i].dot(x_post[pid, 0] - x_rope[0, i]) > 0):
 
-            shift = x_post[pid, 0] - x_rope[0, i]
-            x_rope[0, i] = x_post[pid, 0]
-            velocity_correction = shift / dt
-            lerp_factor = 0.5  # Linear interpolation factor
-            v_rope[0, i] = (1 - lerp_factor) * v_rope[0, i] + lerp_factor * velocity_correction
+    #         shift = x_post[pid, 0] - x_rope[0, i]
+    #         x_rope[0, i] = x_post[pid, 0]
+    #         velocity_correction = shift / dt
+    #         lerp_factor = 0.5  # Linear interpolation factor
+    #         v_rope[0, i] = (1 - lerp_factor) * v_rope[0, i] + lerp_factor * velocity_correction
 
-    for pid, i in ub_post_distances:
-        ub_post_distances[pid, i] = (x_rope[1, i] - x_post[pid, 1]).norm()
-        # Check if the rope node is within threshold distance to the post the post
-        if ub_post_distances[pid, i] <= 0.1:
-            # # Check if the rope node is moving towards the post
-            # if (v_rope[1, i].dot(x_post[pid, 1] - x_rope[1, i]) > 0):
+    # for pid, i in ub_post_distances:
+    #     ub_post_distances[pid, i] = (x_rope[1, i] - x_post[pid, 1]).norm()
+    #     # Check if the rope node is within threshold distance to the post the post
+    #     if ub_post_distances[pid, i] <= 0.1:
+    #         # # Check if the rope node is moving towards the post
+    #         # if (v_rope[1, i].dot(x_post[pid, 1] - x_rope[1, i]) > 0):
 
-            shift = x_post[pid, 1] - x_rope[1, i]
-            x_rope[1, i] = x_post[pid, 1]
-            velocity_correction = shift / dt
-            lerp_factor = 0.5  # Linear interpolation factor
-            v_rope[1, i] = (1 - lerp_factor) * v_rope[1, i] + lerp_factor * velocity_correction
+    #         shift = x_post[pid, 1] - x_rope[1, i]
+    #         x_rope[1, i] = x_post[pid, 1]
+    #         velocity_correction = shift / dt
+    #         lerp_factor = 0.5  # Linear interpolation factor
+    #         v_rope[1, i] = (1 - lerp_factor) * v_rope[1, i] + lerp_factor * velocity_correction
 
-                # # Calculate the projection of the rope tension force on the post
-                # tension_force = force_previous + force_next  # Assuming these are the forces you calculated earlier
-                # post_direction = (x_post[closest_post_id, 0] - x_post[closest_post_id, 1]).normalized()
-                # force_on_post = tension_force.dot(post_direction)
+    #             # # Calculate the projection of the rope tension force on the post
+    #             # tension_force = force_previous + force_next  # Assuming these are the forces you calculated earlier
+    #             # post_direction = (x_post[closest_post_id, 0] - x_post[closest_post_id, 1]).normalized()
+    #             # force_on_post = tension_force.dot(post_direction)
 
+    for n, i, j in x_shackle_hor:
+        net_node = connections_shackle_hor_net[n, i, j]
+        force = fem_spring_damper(
+            x_shackle_hor[n, i, j], 
+            x_net[net_node[0], net_node[1], net_node[2]], 
+            v_shackle_hor[n, i, j], 
+            v_net[net_node[0], net_node[1], net_node[2]], 
+            shackle_spring,
+            shackle_damp,  
+            -1)
+        v_shackle_hor[n, i, j] += force * dt / shackle_node_mass
+        v_net[net_node[0], net_node[1], net_node[2]] -= force * dt / net_node_mass
+
+        x_shackle_hor[n, i, j] += v_shackle_hor[n, i, j] * dt
+        x_net[net_node[0], net_node[1], net_node[2]] += v_net[net_node[0], net_node[1], net_node[2]] * dt
+
+    for rid, n, sid in connections_shackle_hor_rope: 
+        i = connections_shackle_hor_rope[rid, n, sid]
+        force = fem_spring_damper(
+            x_shackle_hor[n, sid, rid], 
+            x_rope[rid, i], 
+            v_shackle_hor[n, sid, rid], 
+            v_rope[rid, i], 
+            shackle_spring, 
+            shackle_damp, 
+            -1)
+        v_shackle_hor[n, sid, rid] += force * dt / shackle_node_mass
+        v_rope[rid, i] -= force * dt / rope_node_mass
+
+        x_shackle_hor[n, sid, rid] += v_shackle_hor[n, sid, rid] * dt
+        x_rope[rid, i] += v_rope[rid, i] * dt      
 
     # Final position updates
     x_ball[0] += dt * v_ball[0]

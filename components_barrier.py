@@ -2,6 +2,7 @@ import taichi as ti
 from math import pi
 
 from properties import *
+#from components_connections import connections_shackle_hor_net, connections_net_shackle_hor
 
 ##### Ropes
 x_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
@@ -19,9 +20,6 @@ num_elements_lb_total = num_elements_lb_horizontal + num_elements_lb_angled * 2
 
 # distances to posts
 lb_post_distances = ti.field(dtype=ti.f32, shape=(4, num_elements_lb_total))
-
-# distances to shackles
-lb_shackle_distances = ti.Vector.field(1, dtype=ti.f32, shape=(n_nets, num_shackles_hor, num_elements_lb_total))
 
 @ti.func
 def init_rope_bearing_low():
@@ -49,8 +47,6 @@ def init_rope_bearing_low():
         m_rope[rid, offset + i] = rope_node_mass
     for i, j in lb_post_distances:
         lb_post_distances[i, j] = 0
-    for I in ti.grouped(lb_shackle_distances):
-        lb_shackle_distances[I] = 0
 
 ### Upper bearing rope
 length_ub_horizontal = net_width * 3
@@ -61,9 +57,6 @@ num_elements_ub_total = num_elements_ub_horizontal + num_elements_ub_angled * 2
 
 # distances to posts
 ub_post_distances = ti.field(dtype=ti.f32, shape=(4, num_elements_ub_total))
-
-# distances to shackles
-ub_shackle_distances = ti.Vector.field(1, dtype=ti.f32, shape=(n_nets, num_shackles_hor, num_elements_ub_total))
 
 @ti.func
 def init_rope_bearing_up():
@@ -91,8 +84,6 @@ def init_rope_bearing_up():
         m_rope[rid, offset + i] = rope_node_mass
     for i, j in ub_post_distances:
         ub_post_distances[i, j] = 0
-    for I in ti.grouped(ub_shackle_distances):
-        ub_shackle_distances[I] = 0
 
 ### Upslope ropes
 length_upslope = ti.sqrt((a/2 - 0)**2 + (h - 0)**2 + (0 - (L + f))**2)
@@ -177,16 +168,12 @@ else:
 x_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
 v_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
 f_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
-m_shackle_hor = ti.field(dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
 
 x_shackle_ver = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets-1, num_shackles_ver))
 v_shackle_ver = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets-1, num_shackles_ver))
-m_shackle_ver = ti.field(dtype=ti.f32, shape=(n_nets-1, num_shackles_ver))
 
 @ti.func
 def init_shackles():
-    m_shackle_hor.fill(shackle_node_mass)
-    m_shackle_ver.fill(shackle_node_mass)
     for n, i, j in x_shackle_hor:
         x = n * net_width + i * (net_quad_size_width * shackle_interval)
         y = j * net_height * ti.sin(epsilon)
@@ -194,6 +181,12 @@ def init_shackles():
         x_shackle_hor[n, i, j] = [x, y, z]
         v_shackle_hor[n, i, j] = [0, 0, 0]
         f_shackle_hor[n, i, j] = [0, 0, 0]
+
+        # Initializing connections
+        net_node_idx = ti.Vector([n, i * shackle_interval, j * (net_nodes_height - 1)])
+        connections_shackle_hor_net[n, i, j] = net_node_idx
+        connections_net_shackle_hor[n, net_node_idx[1], net_node_idx[2]] = [x, y, z]
+
     for n, i in x_shackle_ver:
         x = (n + 1) * net_width
         y = i * net_height * ti.sin(epsilon)
@@ -227,3 +220,60 @@ def init_ball(ball_center: ti.template(), ball_velocity: ti.template()):
     m_ball.fill(ball_mass)
     x_ball[0] = ball_center
     v_ball[0] = ball_velocity
+
+
+
+
+
+
+
+
+
+
+
+
+# CONNECTIONS
+
+##### Connections shackles hor with ropes
+connections_shackle_hor_rope = ti.Vector.field(1, dtype=ti.int32, shape=(2, n_nets, num_shackles_hor))
+connections_rope_shackle_hor = ti.Vector.field(2, dtype=ti.int32, shape=(2, max(num_elements_lb_horizontal, num_elements_ub_horizontal)))
+connections_rope_shackle_hor.fill([99, 99])
+
+@ti.func
+def find_closest_segment(rid, shackle_pos, max_elements):
+    min_distance = 1e6
+    best_index = -1
+    
+    for k in range(max_elements - 1):
+        segment_start = x_rope[rid, k]
+        segment_end = x_rope[rid, k + 1]
+                
+        rope_vector = segment_end - segment_start
+        to_shackle = shackle_pos - segment_start
+        projected_length = to_shackle.dot(rope_vector) / rope_vector.norm()
+                
+        if 0 <= projected_length <= rope_vector.norm():
+            distance = (segment_start + projected_length * rope_vector.normalized() - shackle_pos).norm()
+            if distance < min_distance:
+                min_distance = distance
+                best_index = k
+                
+    return best_index
+
+@ti.func
+def init_connections_shackle_hor_rope():
+    for rid, n, sid in connections_shackle_hor_rope:
+        shackle_pos = x_shackle_hor[n, sid, rid]
+        if rid == 0:  # Lower bearing rope
+            max_elements = num_elements_lb_total
+        else:  # Upper bearing rope
+            max_elements = num_elements_ub_total
+        
+        i = find_closest_segment(rid, shackle_pos, max_elements)
+        connections_shackle_hor_rope[rid, n, sid] = i
+        connections_rope_shackle_hor[rid, i] = ti.Vector([n, sid])
+
+##### Connections shackles hor with net
+connections_shackle_hor_net = ti.Vector.field(3, dtype=ti.int32, shape=(n_nets, num_shackles_hor, 2))
+connections_net_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
+# init of these fields is included in init_shackles
