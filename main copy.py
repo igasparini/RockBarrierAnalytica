@@ -1,0 +1,430 @@
+import numpy as np
+import math
+import taichi as ti
+ti.init(arch=ti.vulkan)  # Alternatively, ti.init(arch=ti.cpu)
+
+from properties import net_width, net_height
+from components_barrier import *
+from components_fem import *
+from rendering import *
+
+# Simulation parameters
+# dt = 1.00e-2 / max(net_nodes_width, net_nodes_height) #8e-3 #1e-2 #1.01e-2
+# substeps = int(1 / 200 // dt) #1/120 #1/200
+dt = 5e-5
+substeps = 50 #200
+
+init_mesh_indices()
+
+@ti.kernel
+def init_points():
+    init_net()
+    init_shackles()
+    init_rope_bearing_low()
+    init_rope_bearing_up()
+    init_rope_upslope()
+    init_rope_support_lat()
+    init_posts()
+    init_ball(ti.Vector([7.5, 1, 1.5]), ti.Vector([0.0, -20.0, 0.0]))
+
+init_points()
+
+
+@ti.func
+def calculate_force_ropes(rid, i, direction):
+    force = ti.Vector([0.0, 0.0, 0.0])
+    eq_length = 0.08  # rope rest length, < 0.1 is pre-tension
+    index = i + 1 if direction == 1 else i - 1
+    # 0 is direction = previous
+    # 1 is direction = next
+    if (direction == 0 and i > 0) or (direction == 1 and i < max_elements - 1 and m_rope[rid, index] != 0.0):
+        if 2 <= rid <= 9:
+            eq_length = 0.099 # almost no pre-tension for upslope ropes
+        if 10 <= rid <= 11:
+            eq_length = 0.095 # almost no pre-tension for lateral ropes
+        force = fem_spring_damper(x_rope[rid, i], 
+                                  x_rope[rid, index], 
+                                  v_rope[rid, i], 
+                                  v_rope[rid, index], 
+                                  rope_spring, 
+                                  rope_damper, 
+                                  eq_length)
+    return force
+
+
+min_indices = ti.field(dtype=ti.i32, shape=(3, num_shackles_hor))
+
+id_shackle_hor_rope_lb = ti.Vector.field(1, dtype=ti.int32, shape=(n_nets, num_shackles_hor))
+id_rope_lb_shackle_hor = ti.Vector.field(2, dtype=ti.int32, shape=num_elements_lb_horizontal)
+
+id_rope_lb_shackle_hor.fill([999, 999])
+
+@ti.kernel
+def init_ids_shackle_hor_rope_lb():
+    index_shift = num_elements_lb_horizontal // (num_shackles_hor * 3)
+    for n, sid in id_shackle_hor_rope_lb:
+        i = num_elements_lb_angled + sid * index_shift + 2 * n * num_shackles_hor
+        id_shackle_hor_rope_lb[n, sid] = i
+        id_rope_lb_shackle_hor[i] = ti.Vector([n, sid])
+
+init_ids_shackle_hor_rope_lb()
+
+
+# Step function
+@ti.kernel
+def substep():
+
+    f_net.fill([0.0, 0.0, 0.0])
+    f_shackle_hor.fill([0.0, 0.0, 0.0])
+    f_rope.fill([0.0, 0.0, 0.0])
+
+    # Gravity
+    v_ball[0] += gravity * dt
+    for i in ti.grouped(x_net):
+        v_net[i] += gravity * dt
+    for i in ti.grouped(x_shackle_hor):
+        v_shackle_hor[i] += gravity * dt
+    for i in ti.grouped(x_shackle_ver):
+        v_shackle_ver[i] += gravity * dt
+    for i in ti.grouped(x_rope):
+        v_rope[i] += gravity * dt
+        v_rope[i] *= ti.exp(-net_drag_damping * dt)
+    for i, j in x_post:
+        if j == 1:
+            v_post[i, j] += gravity * dt
+
+    # # Gravity and air friction
+    # v_ball[0] += gravity * dt - air_friction * v_ball[0].norm() * v_ball[0] * dt
+    # for i in ti.grouped(x_net):
+    #     v_net[i] += gravity * dt - air_friction * v_net[i].norm() * v_net[i] * dt
+    # for i in ti.grouped(x_shackle_hor):
+    #     v_shackle_hor[i] += gravity * dt - air_friction * v_shackle_hor[i].norm() * v_shackle_hor[i] * dt
+    # for i in ti.grouped(x_shackle_ver):
+    #     v_shackle_ver[i] += gravity * dt - air_friction * v_shackle_ver[i].norm() * v_shackle_ver[i] * dt
+    # for i in ti.grouped(x_rope):
+    #     v_rope[i] += gravity * dt - air_friction * v_rope[i].norm() * v_rope[i] * dt
+    # for i, j in x_post:
+    #     if j == 1:
+    #         v_post[i, j] += gravity * dt - air_friction * v_post[i, j].norm() * v_post[i, j] * dt
+  
+    # Ball collision
+    for i in ti.grouped(x_net):
+        displacement = x_net[i] - x_ball[0]
+        distance = displacement.norm()
+        if distance <= ball_radius:
+            collision_normal = displacement.normalized()
+            penetration_depth = ball_radius - distance
+            collision_response_force = collision_spring * penetration_depth ** 2 * collision_normal 
+            relative_velocity = v_net[i] - v_ball[0]
+            damping_force = collision_damping * relative_velocity.dot(collision_normal) * collision_normal
+
+            x_net[i] += penetration_depth * collision_normal
+            v_net[i] += (collision_response_force * dt - damping_force * dt) / m_net[i]
+            v_ball[0] -= (collision_response_force * dt - damping_force * dt) / m_ball[None]
+
+    # Net mechanic
+    for i in ti.grouped(x_net):
+        #force = ti.Vector([0.0, 0.0, 0.0])
+        for spring_offset in ti.static(spring_offsets):
+            j = i + spring_offset
+            if 0 <= j[0] < n_nets and 0 <= j[1] < net_nodes_width and 0 <= j[2] < net_nodes_height:
+                grid_dist_ij = ti.Vector([abs(i[1] - j[1]) * net_quad_size_width,
+                                          abs(i[2] - j[2]) * net_quad_size_height])
+                original_dist = grid_dist_ij.norm()
+
+                f_net[i] += fem_spring_damper_yielding(x_net[i], 
+                                                    x_net[j], 
+                                                    v_net[i], 
+                                                    v_net[j], 
+                                                    net_spring, 
+                                                    net_dashpot_damping, 
+                                                    original_dist, 
+                                                    net_spring_yield)
+        v_net[i] += f_net[i] * dt / m_net[i]
+
+    # Impulse for horizontal shackles
+    for n, i, j in v_shackle_hor:
+        net_node = ti.Vector([n, i * shackle_interval, j * (net_nodes_height - 1)])
+        f_shackle_hor[n, i, j] += f_net[net_node]
+        # v_shackle_hor[n, i, j] += f_shackle_hor[n, i, j] * dt / m_shackle_hor[n, i, j]
+        # x_shackle_hor[n, i, j] += v_shackle_hor[n, i, j] * dt
+
+    # Impulse for vertical shackles
+    for n, i in v_shackle_ver:
+        net_node_1 = ti.Vector([n, net_nodes_width - 1, i * shackle_interval])
+        net_node_2 = ti.Vector([n + 1, 0, i * shackle_interval])
+        middle_point = (x_net[net_node_1] + x_net[net_node_2]) / 2
+        displacement_1 = middle_point - x_net[net_node_1]
+        displacement_2 = middle_point - x_net[net_node_2]
+
+        impulse_1 = displacement_1 * dt
+        impulse_2 = displacement_2 * dt
+        v_net[net_node_1] += impulse_1 / m_net[net_node_1]
+        v_net[net_node_2] += impulse_2 / m_net[net_node_2]
+        v_shackle_ver[n, i] -= (impulse_1 + impulse_2) / m_shackle_ver[n, i]
+
+        x_net[net_node_1] += displacement_1
+        x_net[net_node_2] += displacement_2
+        x_shackle_ver[n, i] = middle_point
+
+    # Ropes - Shackles sliding interaction
+    for n, sid in id_shackle_hor_rope_lb:
+        i = id_shackle_hor_rope_lb[n, sid]
+        i_val = int(i[0])
+
+        f_shackle_hor[n, sid, 0] += f_rope[0, i_val]
+        v_shackle_hor[n, sid, 0] += f_shackle_hor[n, sid, 0] * dt / m_shackle_hor[n, sid, 0]
+
+        current_velocity = v_shackle_hor[n, sid, 0]
+        remaining_distance = current_velocity.norm() * dt
+        final_position = x_shackle_hor[n, sid, 0]
+
+        while remaining_distance > 0:
+            # Compute possible movement directions along the rope
+            dir_i1 = (x_rope[0, i_val+1] - x_rope[0, i_val]).normalized()
+            dir_i2 = (x_rope[0, i_val] - x_rope[0, i_val+1]).normalized()
+
+            proj_dir_i1 = current_velocity.dot(dir_i1)
+            proj_dir_i2 = current_velocity.dot(dir_i2)
+            proj_dir = 0.0
+            segment_length = 0.0
+            dir = ti.Vector([0.0, 0.0, 0.0])
+
+            if proj_dir_i1 > proj_dir_i2:
+                dir = dir_i1
+                proj_dir = proj_dir_i1
+                segment_length = (x_rope[0, i_val+1] - x_rope[0, i_val]).norm()
+            elif proj_dir_i2 > proj_dir_i1:
+                dir = dir_i2
+                proj_dir = proj_dir_i2
+                segment_length = (x_rope[0, i_val] - x_rope[0, i_val+1]).norm()
+
+            # Friction
+            friction_force = -shackle_friction_coefficient * current_velocity
+            friction_acceleration = friction_force / m_shackle_hor[n, sid, 0]
+            current_velocity += friction_acceleration * dt
+            if current_velocity.norm() < 1e-6:  # Avoiding the shackle from moving back due to very low velocities
+                break
+
+            # Compute how far the shackle would move in this iteration
+            proj_distance = proj_dir * dt
+            if proj_distance <= segment_length:
+                final_position += dir * proj_distance
+                #remaining_distance -= proj_distance
+                remaining_distance = 0
+                id_shackle_hor_rope_lb[n, sid] = i_val
+                id_rope_lb_shackle_hor[i_val] = ti.Vector([n, sid])
+
+                x_shackle_hor[n, sid, 0] = final_position
+                v_shackle_hor[n, sid, 0] = current_velocity
+
+                break
+            else:
+                final_position += dir * segment_length
+                remaining_distance -= segment_length
+
+                i_val += 1
+                if i_val >= num_elements_lb_total - 1:
+                    break
+
+    # Ropes
+    for rid, i in x_rope:
+        if m_rope[rid, i] == 0:  # Skip uninitialized elements
+            continue
+        
+        if id_rope_lb_shackle_hor[i][0] == 99:
+            f_rope[0, i] = 0
+        else:
+            f_rope[0, i] = f_shackle_hor[id_rope_lb_shackle_hor[i][0], id_rope_lb_shackle_hor[i][1], 0]
+
+        # Euler
+        force_previous = calculate_force_ropes(rid, i, 0) # 0 is direction = previous
+        force_next = calculate_force_ropes(rid, i, 1) # 1 is direction = next
+        force = force_previous + force_next + f_rope[rid, i]
+
+        v_rope[rid, i] += force / m_rope[rid, i] * dt
+        x_rope[rid, i] += v_rope[rid, i] * dt
+        f_rope[rid, i] += force
+
+        # # Velocity Verlet
+        # force_previous = calculate_force_ropes(rid, i, 0) # 0 is direction = previous
+        # force_next = calculate_force_ropes(rid, i, 1) # 1 is direction = next
+        # force1 = force_previous + force_next
+
+        # a_rope[rid, i] = force1 / m_rope[rid, i]
+        # # First half-step for velocity
+        # v_rope[rid, i] += 0.5 * dt * a_rope[rid, i]
+        # x_rope[rid, i] += dt * v_rope[rid, i]
+        # # Recalculate forces here based on the new positions
+        # force_previous = calculate_force_ropes(rid, i, 0)
+        # force_next = calculate_force_ropes(rid, i, 1)
+        # force2 = force_previous + force_next
+        # a_rope[rid, i] = force2 / m_rope[rid, i]
+        # # Second half-step for velocity
+        # v_rope[rid, i] += 0.5 * dt * a_rope[rid, i]
+
+        # f_rope[rid, i] += force1 + force2
+
+        if i == 0 or (m_rope[rid, i + 1] == 0.0):
+            if 0 <= rid <= 1: # Upper and lower bearing ropes
+                a_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+                v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+                if i == 0:
+                    x_rope[rid, i] = ti.Vector([-b, 0.0, 0.0])
+                if m_rope[rid, i + 1] == 0.0:
+                    x_rope[rid, i] = ti.Vector([3*net_width + b, 0.0, 0.0])
+            if 2 <= rid < 10: # Upslope ropes
+                post_id = (rid - 2) % 4 # Simplified calculation of post_id
+                if i == 0:
+                    force = fem_spring_damper(x_post[post_id, 1], 
+                                               x_rope[rid, i], 
+                                               v_post[post_id, 1], 
+                                               v_rope[rid, i], 
+                                               rope_spring, 
+                                               rope_damper, 
+                                               -1)
+                    v_post[post_id, 1] += force * dt / m_post[post_id, 1]
+                    v_rope[rid, i] = v_post[post_id, 1]
+                    x_rope[rid, i] = x_post[post_id, 1]
+
+                if m_rope[rid, i + 1] == 0.0:
+                    a_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+                    v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+                    if 2 <= rid < 6:
+                        x_rope[rid, i] = ti.Vector([(rid - 2)*net_width + a/2, h, 0.0])
+                    if 6 <= rid < 10:
+                        x_rope[rid, i] = ti.Vector([(rid - 6)*net_width - a/2, h, 0.0])
+            if rid >= 10: # Lateral support ropes
+                post_id = (rid - 10) * 3
+                if i == 0:
+                    a_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+                    v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
+                    if rid == 10:
+                        x_rope[rid, i] = ti.Vector([-b + shift, 0.0, 0.0])
+                    if rid == 11:
+                        x_rope[rid, i] = ti.Vector([net_width * 3 + b - shift, 0.0, 0.0])
+                if m_rope[rid, i + 1] == 0.0:
+                    force = fem_spring_damper(x_post[post_id, 1], 
+                                               x_rope[rid, i], 
+                                               v_post[post_id, 1], 
+                                               v_rope[rid, i], 
+                                               rope_spring, 
+                                               rope_damper, 
+                                               -1)
+                    v_post[post_id, 1] += force * dt / m_post[post_id, 1]
+                    v_rope[rid, i] = v_post[post_id, 1]
+                    x_rope[rid, i] = x_post[post_id, 1]
+
+    # Posts
+    for i, j in x_post:
+        if j == 1: 
+            eq_length = net_height
+            force = fem_spring_damper_pin_joint(x_post[i, 0],
+                                                x_post[i, j], 
+                                                v_post[i, 0], 
+                                                v_post[i, j], 
+                                                post_spring, 
+                                                post_damper, 
+                                                eq_length)
+            v_post[i, j] += force * dt / m_post[i, j]
+            x_post[i, j] += v_post[i, j] * dt
+            #x_post[i, j].x = i * net_width
+
+
+    # Posts - Ropes sliding interaction
+    for pid, i in lb_post_distances:
+        lb_post_distances[pid, i] = (x_rope[0, i] - x_post[pid, 0]).norm()
+        # Check if the rope node is within threshold distance to the post the post
+        if lb_post_distances[pid, i] <= 0.1:
+            # # Check if the rope node is moving towards the post
+            # if (v_rope[0, i].dot(x_post[pid, 0] - x_rope[0, i]) > 0):
+
+            shift = x_post[pid, 0] - x_rope[0, i]
+            x_rope[0, i] = x_post[pid, 0]
+            velocity_correction = shift / dt
+            lerp_factor = 0.5  # Linear interpolation factor
+            v_rope[0, i] = (1 - lerp_factor) * v_rope[0, i] + lerp_factor * velocity_correction
+
+    for pid, i in ub_post_distances:
+        ub_post_distances[pid, i] = (x_rope[1, i] - x_post[pid, 1]).norm()
+        # Check if the rope node is within threshold distance to the post the post
+        if ub_post_distances[pid, i] <= 0.1:
+            # # Check if the rope node is moving towards the post
+            # if (v_rope[1, i].dot(x_post[pid, 1] - x_rope[1, i]) > 0):
+
+            shift = x_post[pid, 1] - x_rope[1, i]
+            x_rope[1, i] = x_post[pid, 1]
+            velocity_correction = shift / dt
+            lerp_factor = 0.5  # Linear interpolation factor
+            v_rope[1, i] = (1 - lerp_factor) * v_rope[1, i] + lerp_factor * velocity_correction
+
+                # # Calculate the projection of the rope tension force on the post
+                # tension_force = force_previous + force_next  # Assuming these are the forces you calculated earlier
+                # post_direction = (x_post[closest_post_id, 0] - x_post[closest_post_id, 1]).normalized()
+                # force_on_post = tension_force.dot(post_direction)
+
+
+    # Final position updates
+    x_ball[0] += dt * v_ball[0]
+    for i in ti.grouped(x_net):
+        #v_net[i] *= ti.exp(-net_drag_damping * dt)
+        x_net[i] += v_net[i] * dt 
+
+
+@ti.kernel
+def update_vertices():
+    update_net_vertices()
+    update_shackle_vertices()
+    update_rope_vertices()
+    update_post_vertices()
+
+
+# Scene rendering
+window = ti.ui.Window("RockBarrierAnalytica Simulation on GGUI", (1024, 1024), vsync=True)
+canvas = window.get_canvas()
+#canvas.set_background_color((1, 1, 1))
+scene = ti.ui.Scene()
+camera = ti.ui.Camera()
+current_t = 0.0
+
+while window.running:
+    if current_t > 3.5:
+        # Reset
+        init_points()
+        current_t = 0
+
+    for i in range(substeps):
+        substep()
+        current_t += dt
+
+    update_vertices()
+
+    camera.position(7.5, 15, 25) #20, 10, 40 #7.5, 15, 35 #30, 5, 5
+    camera.lookat(7.5, 0.0, 1.5) #7.5, 0.0, 1.5
+    scene.set_camera(camera)
+
+    scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))
+    scene.ambient_light((0.5, 0.5, 0.5))
+    scene.mesh(net_vertices_1,
+               indices=net_indices,
+               per_vertex_color=net_colors,
+               two_sided=True)
+    scene.mesh(net_vertices_2,
+               indices=net_indices,
+               per_vertex_color=net_colors,
+               two_sided=True)
+    scene.mesh(net_vertices_3,
+               indices=net_indices,
+               per_vertex_color=net_colors,
+               two_sided=True)
+    scene.particles(x_ball, radius=ball_radius * 0.95, color=(0.8, 0, 0))
+    scene.particles(shakle_vertices_hor_1, radius=0.05, color=(0, 0.2, 1))
+    scene.particles(shakle_vertices_hor_2, radius=0.05, color=(0, 0.2, 1))
+    scene.particles(shakle_vertices_hor_3, radius=0.05, color=(0, 0.2, 1))
+    scene.particles(shakle_vertices_ver_1, radius=0.05, color=(0, 0.2, 1))
+    scene.particles(shakle_vertices_ver_2, radius=0.05, color=(0, 0.2, 1))
+    scene.lines(rope_vertices, color=(0.8, 0.8, 0.8), width=2)
+    scene.lines(post_vertices, color=(0.3, 0.3, 0.3), width=5)
+    
+    canvas.scene(scene)
+    window.show()

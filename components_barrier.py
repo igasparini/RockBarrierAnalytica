@@ -7,6 +7,7 @@ from properties import *
 x_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
 v_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
 a_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
+f_rope = ti.Vector.field(3, dtype=ti.f32, shape=(max_ropes, max_elements))
 m_rope = ti.field(dtype=ti.f32, shape=(max_ropes, max_elements))
 
 ### Lower bearing rope
@@ -145,6 +146,7 @@ net_quad_size_height = net_height / net_nodes_height
 
 x_net = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
 v_net = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
+f_net = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
 m_net = ti.field(dtype=ti.f32, shape=(n_nets, net_nodes_width, net_nodes_height))
 
 @ti.func
@@ -156,6 +158,7 @@ def init_net():
         z = j * net_quad_size_height * ti.cos(epsilon) + f
         x_net[n, i, j] = [x, y, z]
         v_net[n, i, j] = [0, 0, 0]
+        f_net[n, i, j] = [0, 0, 0]
 
 spring_offsets = []
 if net_bending_springs:
@@ -173,6 +176,7 @@ else:
 ##### Shackles
 x_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
 v_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
+f_shackle_hor = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
 m_shackle_hor = ti.field(dtype=ti.f32, shape=(n_nets, num_shackles_hor, 2))
 
 x_shackle_ver = ti.Vector.field(3, dtype=ti.f32, shape=(n_nets-1, num_shackles_ver))
@@ -189,6 +193,7 @@ def init_shackles():
         z = j * net_height * ti.cos(epsilon) + f
         x_shackle_hor[n, i, j] = [x, y, z]
         v_shackle_hor[n, i, j] = [0, 0, 0]
+        f_shackle_hor[n, i, j] = [0, 0, 0]
     for n, i in x_shackle_ver:
         x = (n + 1) * net_width
         y = i * net_height * ti.sin(epsilon)
