@@ -12,8 +12,8 @@ from rendering import *
 # Simulation parameters
 # dt = 1.00e-2 / max(net_nodes_width, net_nodes_height) #8e-3 #1e-2 #1.01e-2
 # substeps = int(1 / 200 // dt) #1/120 #1/200
-dt = 5e-5
-substeps = 50 #200
+dt = 3e-5 #5e-5
+substeps = 50 #200 #50
 
 init_mesh_indices()
 
@@ -36,15 +36,15 @@ init_points()
 @ti.func
 def calculate_force_ropes(rid, i, direction):
     force = ti.Vector([0.0, 0.0, 0.0])
-    eq_length = 0.08  # rope rest length, < 0.1 is pre-tension
+    eq_length = 0.8 * rope_segment_length  # 80% pre-tension
     index = i + 1 if direction == 1 else i - 1
     # 0 is direction = previous
     # 1 is direction = next
     if (direction == 0 and i > 0) or (direction == 1 and i < max_elements - 1 and m_rope[rid, index] != 0.0):
         if 2 <= rid <= 9:
-            eq_length = 0.099 # almost no pre-tension for upslope ropes
+            eq_length = 0.99 * rope_segment_length # almost no pre-tension for upslope ropes
         if 10 <= rid <= 11:
-            eq_length = 0.095 # almost no pre-tension for lateral ropes
+            eq_length = 0.95 * rope_segment_length # almost no pre-tension for lateral ropes
         force = fem_spring_damper(x_rope[rid, i], 
                                   x_rope[rid, index], 
                                   v_rope[rid, i], 
@@ -101,7 +101,7 @@ def substep():
             penetration_depth = ball_radius - distance
             collision_response_force = collision_spring * penetration_depth ** 2 * collision_normal 
             relative_velocity = v_net[i] - v_ball[0]
-            damping_force = collision_damping * relative_velocity.dot(collision_normal) * collision_normal
+            damping_force = collision_damper * relative_velocity.dot(collision_normal) * collision_normal
 
             x_net[i] += penetration_depth * collision_normal
             v_net[i] += (collision_response_force * dt - damping_force * dt) / m_net[i]
@@ -163,75 +163,154 @@ def substep():
 
     # Ropes - Shackles sliding interaction
     for rid, n, sid in connections_shackle_hor_rope:
-        i = connections_shackle_hor_rope[rid, n, sid]
-        i_val = int(i[0])
+        if sid == 0:
+            pass
+        else:
+            i = connections_shackle_hor_rope[rid, n, sid]
+            i_val = int(i[0])
 
-        # f_shackle_hor[n, sid, rid] += f_rope[rid, i_val]
-        # v_shackle_hor[n, sid, rid] += f_shackle_hor[n, sid, rid] * dt / shackle_node_mass
+            # f_shackle_hor[n, sid, rid] += f_rope[rid, i_val]
+            # v_shackle_hor[n, sid, rid] += f_shackle_hor[n, sid, rid] * dt / shackle_node_mass
 
-        current_velocity = v_shackle_hor[n, sid, rid]
-        remaining_distance = current_velocity.norm() * dt
-        final_position = x_shackle_hor[n, sid, rid]
+            current_velocity = v_shackle_hor[n, sid, rid]
+            remaining_distance = current_velocity.norm() * dt
+            final_position = x_shackle_hor[n, sid, rid]
 
-        while remaining_distance > 0:
-            # Compute possible movement directions along the rope
-            dir_i1 = (x_rope[rid, i_val+1] - x_rope[rid, i_val]).normalized()
-            dir_i2 = (x_rope[rid, i_val] - x_rope[rid, i_val+1]).normalized()
+            while remaining_distance > 0:
+                # Compute possible movement directions along the rope
+                dir_i1 = (x_rope[rid, i_val+1] - x_rope[rid, i_val]).normalized()
+                dir_i2 = (x_rope[rid, i_val] - x_rope[rid, i_val+1]).normalized()
 
-            proj_dir_i1 = current_velocity.dot(dir_i1)
-            proj_dir_i2 = current_velocity.dot(dir_i2)
-            proj_dir = 0.0
-            segment_length = 0.0
-            dir = ti.Vector([0.0, 0.0, 0.0])
-
-            if proj_dir_i1 > proj_dir_i2:
-                dir = dir_i1
-                proj_dir = proj_dir_i1
+                proj_dir_i1 = current_velocity.dot(dir_i1)
+                proj_dir_i2 = current_velocity.dot(dir_i2)
+                proj_dir = 0.0
                 segment_length = (x_rope[rid, i_val+1] - x_rope[rid, i_val]).norm()
-            elif proj_dir_i2 > proj_dir_i1:
-                dir = dir_i2
-                proj_dir = proj_dir_i2
-                segment_length = (x_rope[rid, i_val] - x_rope[rid, i_val+1]).norm()
+                dir = ti.Vector([0.0, 0.0, 0.0])
 
-            # Friction
-            friction_force = -shackle_friction_coefficient * current_velocity
-            friction_acceleration = friction_force / shackle_node_mass
-            current_velocity += friction_acceleration * dt
-            if current_velocity.norm() < 1e-6:  # Avoiding the shackle from moving back due to very low velocities
-                break
+                if proj_dir_i1 > proj_dir_i2:
+                    dir = dir_i1
+                    proj_dir = proj_dir_i1
+                elif proj_dir_i2 > proj_dir_i1:
+                    dir = dir_i2
+                    proj_dir = proj_dir_i2
 
-            # Compute how far the shackle would move in this iteration
-            proj_distance = proj_dir * dt
-            if proj_distance <= segment_length:
-                final_position += dir * proj_distance
-                remaining_distance = 0
-                connections_shackle_hor_rope[rid, n, sid] = i_val
-                connections_rope_shackle_hor[rid, i_val] = ti.Vector([n, sid])
-
-                x_shackle_hor[n, sid, rid] = final_position
-                v_shackle_hor[n, sid, rid] = current_velocity
-
-                break
-            else:
-                final_position += dir * segment_length
-                remaining_distance -= segment_length
-
-                i_val += 1
-                if rid == 0 and i_val >= num_elements_lb_total - 1:
+                # Friction
+                friction_force = -shackle_friction_coefficient * current_velocity
+                friction_acceleration = friction_force / shackle_node_mass
+                current_velocity += friction_acceleration * dt
+                if current_velocity.norm() < 1e-6:  # Avoiding the shackle from moving back due to very low velocities
                     break
-                elif rid == 1 and i_val >= num_elements_ub_total - 1:
-                    break
+
+                # Compute how far the shackle would move in this iteration
+                proj_distance = proj_dir * dt
+
+                if proj_distance <= segment_length:
+                    # Shackle collision handling
+                    displacement = x_shackle_hor[n, sid+1, rid] - x_shackle_hor[n, sid, rid]
+                    distance = displacement.norm()
+                    overlap = proj_distance - distance
+                    if overlap > 0:
+                        v1 = v_shackle_hor[n, sid, rid]
+                        v2 = v_shackle_hor[n, sid+1, rid]
+                        delta_v = (v1 - v2).dot(dir)  # Relative velocity along the collision direction
+
+                        alpha = overlap / 2
+                        damping_force = collision_damper * delta_v
+
+                        v_shackle_hor[n, sid, rid] = v1 - alpha + damping_force
+                        v_shackle_hor[n, sid+1, rid] = v2 + alpha - damping_force
+
+                        correction1 = alpha * dir
+                        correction2 = alpha * dir
+
+                        x_shackle_hor[n, sid, rid] -= correction1
+                        x_shackle_hor[n, sid+1, rid] += correction2
+                        break
+                    else:
+                        final_position += dir * proj_distance
+                        remaining_distance = 0
+                        connections_shackle_hor_rope[rid, n, sid] = i_val
+                        connections_rope_shackle_hor[rid, i_val] = ti.Vector([n, sid])
+
+                        x_shackle_hor[n, sid, rid] = final_position
+                        v_shackle_hor[n, sid, rid] = current_velocity
+
+                        # Spring/damper
+                        node1 = x_rope[rid, i_val]
+                        node2 = x_rope[rid, i_val+1]
+                        t = (final_position - node1).dot(node2 - node1) / segment_length**2
+                        closest_point_on_segment = node1 + t * (node2 - node1)
+                        force = fem_spring_damper(
+                            final_position, 
+                            closest_point_on_segment, 
+                            v_shackle_hor[n, sid, rid], 
+                            v_rope[rid, i_val], 
+                            shackle_spring, 
+                            10,
+                            -1)
+                        v_shackle_hor[n, sid, rid] += force * dt / shackle_node_mass
+                        # Splitting the force on the net nodes
+                        f1 = (1 - t) * force
+                        f2 = t * force
+
+                        v_shackle_hor[n, sid, rid] += force * dt / shackle_node_mass
+                        v_rope[rid, i_val] -= f1 * dt / rope_node_mass
+                        v_rope[rid, i_val+1] -= f2 * dt / rope_node_mass
+
+                        x_shackle_hor[n, sid, rid] += v_shackle_hor[n, sid, rid] * dt
+                        x_rope[rid, i_val] += v_rope[rid, i_val] * dt
+                        x_rope[rid, i_val+1] += v_rope[rid, i_val+1] * dt
+                        break
+                else:
+                    # Shackle collision handling
+                    displacement = x_shackle_hor[n, sid+1, rid] - x_shackle_hor[n, sid, rid]
+                    distance = displacement.norm()
+                    overlap = segment_length - distance
+                    if overlap > 0:
+                        v1 = v_shackle_hor[n, sid, rid]
+                        v2 = v_shackle_hor[n, sid+1, rid]
+                        delta_v = (v1 - v2).dot(dir)  # Relative velocity along the collision direction
+
+                        alpha = overlap / 2
+                        damping_force = collision_damper * delta_v
+
+                        v_shackle_hor[n, sid, rid] = v1 - alpha + damping_force
+                        v_shackle_hor[n, sid+1, rid] = v2 + alpha - damping_force
+
+                        correction1 = alpha * dir
+                        correction2 = alpha * dir
+
+                        x_shackle_hor[n, sid, rid] -= correction1
+                        x_shackle_hor[n, sid+1, rid] += correction2
+                        break
+                    else:
+                        final_position += dir * segment_length
+                        remaining_distance -= segment_length
+                        i_val += 1
+                    if rid == 0 and i_val >= num_elements_lb_total - 1:
+                        break
+                    elif rid == 1 and i_val >= num_elements_ub_total - 1:
+                        break
+
+    for i in ti.grouped(x_net):
+        displacement = x_net[i] - x_ball[0]
+        distance = displacement.norm()
+        if distance <= ball_radius:
+            collision_normal = displacement.normalized()
+            penetration_depth = ball_radius - distance
+            collision_response_force = collision_spring * penetration_depth ** 2 * collision_normal 
+            relative_velocity = v_net[i] - v_ball[0]
+            damping_force = collision_damper * relative_velocity.dot(collision_normal) * collision_normal
+
+            x_net[i] += penetration_depth * collision_normal
+            v_net[i] += (collision_response_force * dt - damping_force * dt) / m_net[i]
+            v_ball[0] -= (collision_response_force * dt - damping_force * dt) / m_ball[None]
+
 
     # Ropes
     for rid, i in x_rope:
         if m_rope[rid, i] == 0:  # Skip uninitialized elements
             continue
-        
-        # if rid == 0 or rid == 1:
-        #     if connections_rope_shackle_hor[rid, i][0] == 99:
-        #         f_rope[rid, i] = 0
-        #     else:
-        #         f_rope[rid, i] += f_shackle_hor[connections_rope_shackle_hor[rid, i][0], connections_rope_shackle_hor[rid, i][1], 0]
 
         # Euler
         force_previous = calculate_force_ropes(rid, i, 0) # 0 is direction = previous
@@ -272,13 +351,14 @@ def substep():
             if 2 <= rid < 10: # Upslope ropes
                 post_id = (rid - 2) % 4 # Simplified calculation of post_id
                 if i == 0:
-                    force = fem_spring_damper(x_post[post_id, 1], 
-                                               x_rope[rid, i], 
-                                               v_post[post_id, 1], 
-                                               v_rope[rid, i], 
-                                               rope_spring, 
-                                               rope_damper, 
-                                               -1)
+                    force = fem_spring_damper(
+                        x_post[post_id, 1], 
+                        x_rope[rid, i], 
+                        v_post[post_id, 1], 
+                        v_rope[rid, i], 
+                        rope_spring, 
+                        rope_damper, 
+                        -1)
                     v_post[post_id, 1] += force * dt / m_post[post_id, 1]
                     v_rope[rid, i] = v_post[post_id, 1]
                     x_rope[rid, i] = x_post[post_id, 1]
@@ -300,13 +380,14 @@ def substep():
                     if rid == 11:
                         x_rope[rid, i] = ti.Vector([net_width * 3 + b - shift, 0.0, 0.0])
                 if m_rope[rid, i + 1] == 0.0:
-                    force = fem_spring_damper(x_post[post_id, 1], 
-                                               x_rope[rid, i], 
-                                               v_post[post_id, 1], 
-                                               v_rope[rid, i], 
-                                               rope_spring, 
-                                               rope_damper, 
-                                               -1)
+                    force = fem_spring_damper(
+                        x_post[post_id, 1], 
+                        x_rope[rid, i], 
+                        v_post[post_id, 1], 
+                        v_rope[rid, i], 
+                        rope_spring, 
+                        rope_damper, 
+                        -1)
                     v_post[post_id, 1] += force * dt / m_post[post_id, 1]
                     v_rope[rid, i] = v_post[post_id, 1]
                     x_rope[rid, i] = x_post[post_id, 1]
@@ -315,13 +396,14 @@ def substep():
     for i, j in x_post:
         if j == 1: 
             eq_length = net_height
-            force = fem_spring_damper_pin_joint(x_post[i, 0],
-                                                x_post[i, j], 
-                                                v_post[i, 0], 
-                                                v_post[i, j], 
-                                                post_spring, 
-                                                post_damper, 
-                                                eq_length)
+            force = fem_spring_damper_pin_joint(
+                x_post[i, 0],
+                x_post[i, j], 
+                v_post[i, 0], 
+                v_post[i, j], 
+                post_spring, 
+                post_damper, 
+                eq_length)
             v_post[i, j] += force * dt / m_post[i, j]
             x_post[i, j] += v_post[i, j] * dt
             #x_post[i, j].x = i * net_width
@@ -359,37 +441,26 @@ def substep():
     #             # post_direction = (x_post[closest_post_id, 0] - x_post[closest_post_id, 1]).normalized()
     #             # force_on_post = tension_force.dot(post_direction)
 
-    for n, i, j in x_shackle_hor:
-        net_node = connections_shackle_hor_net[n, i, j]
-        force = fem_spring_damper(
-            x_shackle_hor[n, i, j], 
-            x_net[net_node[0], net_node[1], net_node[2]], 
-            v_shackle_hor[n, i, j], 
-            v_net[net_node[0], net_node[1], net_node[2]], 
-            shackle_spring,
-            shackle_damp,  
-            -1)
-        v_shackle_hor[n, i, j] += force * dt / shackle_node_mass
-        v_net[net_node[0], net_node[1], net_node[2]] -= force * dt / net_node_mass
+    # Shackle - net interaction
+    for n, sid, rid in x_shackle_hor:
+        if sid == 0:
+            pass
+        else:
+            net_node = connections_shackle_hor_net[n, sid, rid]
+            force = fem_spring_damper(
+                x_shackle_hor[n, sid, rid], 
+                x_net[net_node[0], net_node[1], net_node[2]], 
+                v_shackle_hor[n, sid, rid], 
+                v_net[net_node[0], net_node[1], net_node[2]], 
+                shackle_spring,
+                shackle_damper,  
+                -1)
+            v_shackle_hor[n, sid, rid] += force * dt / shackle_node_mass
+            v_net[net_node[0], net_node[1], net_node[2]] -= force * dt / net_node_mass
 
-        x_shackle_hor[n, i, j] += v_shackle_hor[n, i, j] * dt
-        x_net[net_node[0], net_node[1], net_node[2]] += v_net[net_node[0], net_node[1], net_node[2]] * dt
+            x_shackle_hor[n, sid, rid] += v_shackle_hor[n, sid, rid] * dt
+            x_net[net_node[0], net_node[1], net_node[2]] += v_net[net_node[0], net_node[1], net_node[2]] * dt
 
-    for rid, n, sid in connections_shackle_hor_rope: 
-        i = connections_shackle_hor_rope[rid, n, sid]
-        force = fem_spring_damper(
-            x_shackle_hor[n, sid, rid], 
-            x_rope[rid, i], 
-            v_shackle_hor[n, sid, rid], 
-            v_rope[rid, i], 
-            shackle_spring, 
-            shackle_damp, 
-            -1)
-        v_shackle_hor[n, sid, rid] += force * dt / shackle_node_mass
-        v_rope[rid, i] -= force * dt / rope_node_mass
-
-        x_shackle_hor[n, sid, rid] += v_shackle_hor[n, sid, rid] * dt
-        x_rope[rid, i] += v_rope[rid, i] * dt      
 
     # Final position updates
     x_ball[0] += dt * v_ball[0]

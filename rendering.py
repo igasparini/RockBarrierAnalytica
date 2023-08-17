@@ -62,8 +62,8 @@ rope_vertices = ti.Vector.field(3, dtype=ti.f32, shape=max_ropes * max_elements)
 
 @ti.func
 def update_rope_vertices():
-    for rid, eid in ti.ndrange(max_ropes, max_elements):
-        rope_vertices[rid * max_elements + eid] = x_rope[rid, eid]
+    for rid, i in ti.ndrange(max_ropes, max_elements):
+        rope_vertices[rid * max_elements + i] = x_rope[rid, i]
 
 # Posts rendering
 post_vertices = ti.Vector.field(3, dtype=ti.f32, shape= (n_nets + 1) * 2)
