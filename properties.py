@@ -47,13 +47,13 @@ num_shackles_hor = (net_nodes_width + shackle_interval - 1) // shackle_interval
 num_shackles_ver = (net_nodes_height + shackle_interval - 1) // shackle_interval
 shackle_friction_coefficient = 0.85
 shackle_spring = 1e6 #1e5
-shackle_damper = 1e3
+shackle_damper = 1e2
 shackle_node_mass = 1
 
 # Posts
 num_posts = n_nets + 1
 post_node_mass = 100 #50
-post_spring = 1e6
+post_spring = 1e8
 post_damper = 1e4
 
 # Ball
