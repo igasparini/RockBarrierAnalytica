@@ -108,16 +108,16 @@ def init_rope_upslope():
             m_rope[6 + v, w] = rope_node_mass
 
 ### Lateral support ropes
-length_support = ti.sqrt((b + shift)**2 + (L + f)**2)
+length_support = ti.sqrt((b + rope_lateral_shift)**2 + (L + f)**2)
 num_elements_support = round(length_support * (1/rope_segment_length)) - 1 # -1 to account for rounding errors
 
 @ti.func
 def init_rope_support_lat():
     rid = 10
-    start_pos_left = ti.Vector([-b + shift, 0.0, 0.0])
-    start_pos_right = ti.Vector([(net_width * 3 + b - shift), 0.0, 0.0])
-    direction_left = ti.Vector([b - shift, 0, (L + f)])
-    direction_right = ti.Vector([net_width * 3 - (net_width * 3 + b - shift), 0, (L + f)])
+    start_pos_left = ti.Vector([-b + rope_lateral_shift, 0.0, 0.0])
+    start_pos_right = ti.Vector([(net_width * 3 + b - rope_lateral_shift), 0.0, 0.0])
+    direction_left = ti.Vector([b - rope_lateral_shift, 0, (L + f)])
+    direction_right = ti.Vector([net_width * 3 - (net_width * 3 + b - rope_lateral_shift), 0, (L + f)])
     for i in ti.ndrange((num_elements_support)):
         x_rope[rid, i] = start_pos_left + (i * rope_segment_length * direction_left.normalized())
         v_rope[rid, i] = ti.Vector([0, 0, 0])

@@ -6,7 +6,7 @@ from components_barrier import *
 @ti.func
 def spring_damper(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
     """
-    Models a simple spring/damper system and returns the force.
+    Models a dashpot spring/damper system and returns the force.
 
     eq_ength = equilibrium length of the spring
 
@@ -20,7 +20,6 @@ def spring_damper(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
         eq_length = 0
 
     spring_force = -spring_const * (displacement_norm - eq_length) * displacement_direction
-    #damping_force = -damper_const * velocity_difference # 1D damping
     damping_force = -damper_const * velocity_difference.dot(displacement_direction) * displacement_direction #* min(net_quad_size_width, net_quad_size_height) # dashpot damping
 
     force = spring_force + damping_force
@@ -29,7 +28,7 @@ def spring_damper(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
 @ti.func
 def spring_damper_1D(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
     """
-    Models a simple spring/damper system and returns the force.
+    Models a spring/damper system and returns the force. Damping is applied regardless of direction.
 
     eq_ength = equilibrium length of the spring
 
@@ -43,8 +42,7 @@ def spring_damper_1D(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
         eq_length = 0
 
     spring_force = -spring_const * (displacement_norm - eq_length) * displacement_direction
-    #damping_force = -damper_const * velocity_difference # 1D damping
-    damping_force = -damper_const * velocity_difference.dot(displacement_direction) * displacement_direction #* min(net_quad_size_width, net_quad_size_height) # dashpot damping
+    damping_force = -damper_const * velocity_difference # 1D damping
 
     force = spring_force + damping_force
     return force
@@ -52,7 +50,7 @@ def spring_damper_1D(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
 @ti.func
 def spring_damper_yielding(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1, yield_force=0):
     """
-    Models a spring/damper system that allows yelding of the spring and returns the force.
+    Models a dashpot spring/damper system that allows yelding of the spring and returns the force.
 
     eq_ength = equilibrium length of the spring
     yield_force = force from which the spring esibites plastic behaviour
@@ -80,9 +78,41 @@ def spring_damper_yielding(x1, x2, v1, v2, spring_const, damper_const, eq_length
     return force
 
 @ti.func
+def spring_damper_bending(x0, x1, x2, x3, v1, v2, spring_const, damper_const, angle_threshold, bend_const, eq_length=-1):
+    """
+    Models a spring/damper system with resistance to lateral movement (bending) and returns the force.
+
+    eq_ength = equilibrium length of the spring
+
+    """
+    displacement = x1 - x2
+    displacement_norm = displacement.norm()
+    displacement_direction = displacement / displacement_norm if displacement_norm != 0 else 0
+    velocity_difference = v1 - v2
+
+    if eq_length == -1:
+        eq_length = 0
+
+    spring_force = -spring_const * (displacement_norm - eq_length) * displacement_direction
+    damping_force = -damper_const * velocity_difference.dot(displacement_direction) * displacement_direction
+
+    force = spring_force + damping_force
+
+    # Bending resistance
+    dir1 = (x1 - x0).normalized()
+    dir2 = (x2 - x3).normalized()
+    bend_angle = ti.acos(dir1.dot(dir2))
+    if abs(bend_angle) > rope_bending_angle_threshold:
+        bend_force_magnitude = rope_bending_constant * bend_angle
+        bend_force = bend_force_magnitude * (x1 - x2).normalized()
+        force += bend_force
+
+    return force
+
+@ti.func
 def spring_damper_pin_joint(x1, x2, v1, v2, spring_const, damper_const, eq_length=-1):
     """
-    Models a simple spring/damper system and returns the force.
+    Models a spring/damper system modified to work as a pin joint connection and returns the force.
 
     eq_ength = equilibrium length of the spring
 
@@ -96,15 +126,14 @@ def spring_damper_pin_joint(x1, x2, v1, v2, spring_const, damper_const, eq_lengt
         eq_length = 0
 
     spring_force = spring_const * (displacement_norm - eq_length) * displacement_direction
-    damping_force = -damper_const * displacement_direction.dot(v2) * displacement_direction #* min(net_quad_size_width, net_quad_size_height) # dashpot damping
-
+    damping_force = -damper_const * displacement_direction.dot(v2) * displacement_direction
     force = spring_force + damping_force
     return force
 
 @ti.func
 def slide_along_rope_posts(connections_obj_rope, v_obj, x_obj, v_rope, x_rope, obj_mass, rope_mass, obj_friction_coeff, obj_spring, obj_damper, collision_damper_coeff, dt, num_elements_total):
     """
-    Models the interaction of an object sliding along a rope.
+    Models the interaction of a rope sliding through a post.
 
     """
     for rid, obj_id in connections_obj_rope:

@@ -42,7 +42,7 @@ def calculate_force_ropes(rid, i, direction):
         if 2 <= rid <= 9:
             eq_length = 0.95 * rope_segment_length # pre-tension upslope ropes
         if 10 <= rid <= 11:
-            eq_length = 1 * rope_segment_length # pre-tension lateral ropes (1 = no pre-tension)
+            eq_length = 0.95 * rope_segment_length # pre-tension lateral ropes (1 = no pre-tension)
         force = spring_damper(x_rope[rid, i], 
                                   x_rope[rid, index], 
                                   v_rope[rid, i], 
@@ -50,6 +50,18 @@ def calculate_force_ropes(rid, i, direction):
                                   rope_spring, 
                                   rope_damper, 
                                   eq_length)
+        # force = spring_damper_bending(
+        #     x_rope[rid, i-1],
+        #     x_rope[rid, i], 
+        #     x_rope[rid, index],
+        #     x_rope[rid, index+1], 
+        #     v_rope[rid, i], 
+        #     v_rope[rid, index], 
+        #     rope_spring, 
+        #     rope_damper,
+        #     rope_bending_angle_threshold,
+        #     rope_bending_constant,
+        #     eq_length)
     return force
 
 
@@ -192,9 +204,9 @@ def substep():
                     a_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
                     v_rope[rid, i] = ti.Vector([0.0, 0.0, 0.0])
                     if rid == 10:
-                        x_rope[rid, i] = ti.Vector([-b + shift, 0.0, 0.0])
+                        x_rope[rid, i] = ti.Vector([-b + rope_lateral_shift, 0.0, 0.0])
                     if rid == 11:
-                        x_rope[rid, i] = ti.Vector([net_width * 3 + b - shift, 0.0, 0.0])
+                        x_rope[rid, i] = ti.Vector([net_width * 3 + b - rope_lateral_shift, 0.0, 0.0])
                 if m_rope[rid, i + 1] == 0.0:
                     force = spring_damper(
                         x_post[post_id, 1], 
@@ -237,9 +249,19 @@ def substep():
                 post_spring, 
                 post_damper, 
                 eq_length)
+            # Restrict movement in the x direction (lateral constraints of the pin joint)
+            x_eq_position = i * net_width
+            x_displacement = x_post[i, j][0] - x_eq_position
+            x_velocity = v_post[i, j][0]
+
+            x_spring_force = -post_base_spring * x_displacement
+            x_damper_force = -post_base_damper * x_velocity
+            x_force = x_spring_force + x_damper_force
+            
+            v_post[i, j][0] += x_force * dt / m_post[i, j]
             v_post[i, j] += force * dt / m_post[i, j]
+
             x_post[i, j] += v_post[i, j] * dt
-            #x_post[i, j].x = i * net_width
 
     # Shackle - net interaction
     for n, sid, rid in x_shackle_hor:
