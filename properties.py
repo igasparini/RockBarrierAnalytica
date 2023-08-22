@@ -23,7 +23,7 @@ beta = math.atan((a/2) / np.sqrt((h - L * np.sin(epsilon))**2 + (L * np.cos(epsi
 delta = math.atan(L / b)
 
 # Ropes
-rope_segment_length = 0.08
+rope_segment_length = 0.08 #0.08
 rope_node_mass = rope_segment_length * 10
 max_ropes = 14  # maximum number of ropes
 max_elements = 300  # assuming a maximum length of 30m for ropes
@@ -36,10 +36,10 @@ rope_lateral_shift = 0.25 # shift between bearing ropes and support ropes
 # Nets
 net_nodes_width = 107 #107
 net_nodes_height = 64 #64
-net_spring = 1e6 #1e5
-net_spring_yield = 5e6 # 1.1e5
-net_dashpot_damping = 1.5e4 #1e4
-net_drag_damping = 5
+net_spring = 1e4 #1e6
+net_spring_yield = 5e4 # 5e6
+net_dashpot_damping = 1.5e2 #1.5e4
+net_drag_damping = 5 #5
 net_node_mass = 0.5
 net_bending_springs = False # bending springs facilitate bending or deformation by introducing additional connections between nodes
 

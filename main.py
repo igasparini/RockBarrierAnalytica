@@ -124,35 +124,55 @@ def substep():
     for n, i in x_shackle_ver:
         net_node_1 = ti.Vector([n, net_nodes_width - 1, i * shackle_interval])
         net_node_2 = ti.Vector([n + 1, 0, i * shackle_interval])
+        
+        force = spring_damper_no_compression(
+            x_net[net_node_1], 
+            x_net[net_node_2], 
+            v_net[net_node_1], 
+            v_net[net_node_2], 
+            shackle_spring, 
+            shackle_damper, 
+            eq_length=0.2)
+
         middle_point = (x_net[net_node_1] + x_net[net_node_2]) / 2
-        displacement_1 = middle_point - x_net[net_node_1]
-        displacement_2 = middle_point - x_net[net_node_2]
 
-        impulse_1 = displacement_1 * dt
-        impulse_2 = displacement_2 * dt
-        v_net[net_node_1] += impulse_1 / m_net[net_node_1]
-        v_net[net_node_2] += impulse_2 / m_net[net_node_2]
-        v_shackle_ver[n, i] -= (impulse_1 + impulse_2) / shackle_node_mass
+        v_net[net_node_1] += force / m_net[net_node_1] * dt
+        v_net[net_node_2] -= force / m_net[net_node_2] * dt
 
-        x_net[net_node_1] += displacement_1
-        x_net[net_node_2] += displacement_2
+        x_net[net_node_1] += v_net[net_node_1] * dt
+        x_net[net_node_2] += v_net[net_node_2] * dt
         x_shackle_ver[n, i] = middle_point
 
+        # # Old impulse calculation:
+        # middle_point = (x_net[net_node_1] + x_net[net_node_2]) / 2
+        # displacement_1 = middle_point - x_net[net_node_1]
+        # displacement_2 = middle_point - x_net[net_node_2]
+
+        # impulse_1 = displacement_1 * dt
+        # impulse_2 = displacement_2 * dt
+        # v_net[net_node_1] += impulse_1 / m_net[net_node_1]
+        # v_net[net_node_2] += impulse_2 / m_net[net_node_2]
+        # v_shackle_ver[n, i] -= (impulse_1 + impulse_2) / shackle_node_mass
+
+        # x_net[net_node_1] += displacement_1
+        # x_net[net_node_2] += displacement_2
+        # x_shackle_ver[n, i] = middle_point
+
     # Ropes - horizontal shackles sliding interaction
-    # slide_along_rope_shackles(
-    #     connections_shackle_hor_rope,
-    #     v_shackle_hor,
-    #     x_shackle_hor,
-    #     v_rope,
-    #     x_rope,
-    #     shackle_node_mass,
-    #     rope_node_mass,
-    #     shackle_friction_coefficient,
-    #     shackle_spring,
-    #     10,
-    #     collision_damper,
-    #     dt,
-    #     num_elements_lb_total)
+    slide_along_rope_shackles(
+        connections_shackle_hor_rope,
+        v_shackle_hor,
+        x_shackle_hor,
+        v_rope,
+        x_rope,
+        shackle_node_mass,
+        rope_node_mass,
+        shackle_friction_coefficient,
+        shackle_spring,
+        10,
+        1,
+        dt,
+        num_elements_lb_total)
 
     # Ropes
     for rid, i in x_rope:
