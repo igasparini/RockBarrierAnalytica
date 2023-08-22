@@ -10,7 +10,7 @@ from rendering import *
 
 # Simulation parameters
 dt = 5e-5 #5e-5
-substeps = 50 #200 #50
+substeps = 100 #200 #50
 
 init_mesh_indices()
 
@@ -23,7 +23,7 @@ def init_points():
     init_rope_upslope()
     init_rope_support_lat()
     init_posts()
-    init_ball(ti.Vector([7.5, 5, 1.5]), ti.Vector([0.0, -20.0, 0.0]))
+    init_ball(ti.Vector([7.5, 35, 1.5]), ti.Vector([0.0, 0.0, 0.0]))
 
     init_connections_shackle_hor_rope()
     init_connections_post_rope()
@@ -40,15 +40,15 @@ def calculate_force_ropes(rid, i, direction):
     # 1 is direction = next
     if (direction == 0 and i > 0) or (direction == 1 and i < max_elements - 1 and m_rope[rid, index] != 0.0):
         if 2 <= rid <= 9:
-            eq_length = 0.95 * rope_segment_length # pre-tension upslope ropes
+            eq_length = 0.99 * rope_segment_length # pre-tension upslope ropes
         if 10 <= rid <= 11:
             eq_length = 0.95 * rope_segment_length # pre-tension lateral ropes (1 = no pre-tension)
-        force = spring_damper(x_rope[rid, i], 
+        force = spring_damper_1D(x_rope[rid, i], 
                                   x_rope[rid, index], 
                                   v_rope[rid, i], 
                                   v_rope[rid, index], 
                                   rope_spring, 
-                                  rope_damper, 
+                                  rope_damper*2, 
                                   eq_length)
         # force = spring_damper_bending(
         #     x_rope[rid, i-1],

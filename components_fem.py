@@ -179,11 +179,6 @@ def slide_along_rope_posts(connections_obj_rope, v_obj, x_obj, v_rope, x_rope, o
         connections_obj_rope[rid, obj_id] = best_i_val
         i_val = best_i_val
         
-        # displacement_direction = (x_obj[obj_id, rid] - x_rope[rid, i_val]).normalized()
-        # current_velocity = v_obj[obj_id, rid].dot(displacement_direction) * displacement_direction - v_rope[rid, i_val].dot(displacement_direction) * displacement_direction
-        # remaining_distance = current_velocity.norm() * dt
-        # final_position = x_obj[obj_id, rid]
-        
         # Horizontal post line interaction
         line_point_1 = x_obj[obj_id, rid]
         line_point_2 = ti.Vector([0, x_obj[obj_id, rid][1], x_obj[obj_id, rid][2]])
