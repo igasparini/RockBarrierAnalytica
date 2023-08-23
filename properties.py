@@ -37,9 +37,9 @@ rope_lateral_shift = 0.25 # shift between bearing ropes and support ropes
 net_nodes_width = 53 #107
 net_nodes_height = 32 #64
 net_spring = 1e4 #1e6
-net_spring_yield = 5e4 # 5e6
+net_spring_yield = 2e3 # 5e6
 net_dashpot_damping = 1.5e2 #1.5e4
-net_drag_damping = 5 #5
+net_drag_damping = 50 #5
 net_node_mass = 0.1 #0.05
 net_bending_springs = False # bending springs facilitate bending or deformation by introducing additional connections between nodes
 

@@ -40,7 +40,7 @@ def calculate_force_ropes(rid, i, direction):
     # 1 is direction = next
     if (direction == 0 and i > 0) or (direction == 1 and i < max_elements - 1 and m_rope[rid, index] != 0.0):
         if 2 <= rid <= 9:
-            eq_length = 0.99 * rope_segment_length # pre-tension upslope ropes
+            eq_length = 0.95 * rope_segment_length # pre-tension upslope ropes
         if 10 <= rid <= 11:
             eq_length = 0.95 * rope_segment_length # pre-tension lateral ropes (1 = no pre-tension)
         force = spring_damper_1D(x_rope[rid, i], 
@@ -115,7 +115,7 @@ def substep():
                                                     v_net[j], 
                                                     net_spring, 
                                                     net_dashpot_damping, 
-                                                    original_dist, 
+                                                    original_dist,
                                                     net_spring_yield)
         
         v_net[i] += force * dt / m_net[i]
@@ -170,7 +170,7 @@ def substep():
         shackle_friction_coefficient,
         shackle_spring,
         10,
-        1,
+        1, #collision damper
         dt,
         num_elements_lb_total)
 
