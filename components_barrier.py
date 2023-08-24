@@ -152,15 +152,21 @@ def init_net():
 
 spring_offsets = []
 if net_bending_springs:
+    # 12 neighbouring nodes
     for i in range(-2, 3):
         for j in range(-2, 3):
             if (i, j) != (0, 0) and abs(i) + abs(j) <= 2:
                 spring_offsets.append(ti.Vector([0, i, j]))
 else:
-    for i in range(-1, 2):
-        for j in range(-1, 2):
-            if (i, j) != (0, 0):
-                spring_offsets.append(ti.Vector([0, i, j]))
+    # 8 neighbouring nodes
+    # for i in range(-1, 2):
+    #     for j in range(-1, 2):
+    #         if (i, j) != (0, 0):
+    #             spring_offsets.append(ti.Vector([0, i, j]))
+
+    # 4 neighbouring nodes
+    for i, j in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        spring_offsets.append(ti.Vector([0, i, j]))
 
 
 ##### Shackles
