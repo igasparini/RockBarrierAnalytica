@@ -120,7 +120,7 @@ def substep():
         
         v_net[i] += force * dt / m_net[i]
 
-    # Vertical shackles
+    # Vertical shackles - net interaction
     for n, i in x_shackle_ver:
         net_node_1 = ti.Vector([n, net_nodes_width - 1, i * shackle_interval])
         net_node_2 = ti.Vector([n + 1, 0, i * shackle_interval])
@@ -283,7 +283,7 @@ def substep():
 
             x_post[i, j] += v_post[i, j] * dt
 
-    # Shackle - net interaction
+    # Horizontal shackles - net interaction
     for n, sid, rid in x_shackle_hor:
         if sid == 0:
             pass
